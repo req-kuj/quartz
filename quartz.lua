@@ -350,7 +350,10 @@ function init()
 
   local frame = metro.init()
   frame.time = 1 / 20
-  frame.event = function() redraw() end
+  frame.event = function()
+    -- the file browser owns the screen while it is open
+    if not selecting then redraw() end
+  end
   frame:start()
 
   -- splash: show the help view with a 3, 2, 1 countdown on launch
@@ -717,6 +720,7 @@ local function draw_help()
 end
 
 function redraw()
+  if selecting then return end
   screen.clear()
   screen.aa(0)
   screen.font_size(8)
