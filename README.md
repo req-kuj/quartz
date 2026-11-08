@@ -80,7 +80,7 @@ Like Beads, each main knob shares a page with its attenurandomizer, the knob tha
 ![voice page](docs/images/page_8.png)
 
 - **source:** what feeds the cloud (see below)
-- **octave:** only appears for synth follow and synth midi
+- **octave:** for synth follow and synth midi. With the sample source, this becomes **sample speed**
 
 ### 9 patch
 ![patch page](docs/images/page_9.png)
@@ -109,6 +109,11 @@ Key 2 freezes the buffer, so you can scrub it with time. Key 3 turns the cloud o
 | synth drone | the wavetable synth, playing nonstop at the pitch you set |
 | synth follow | the synth playing the notes it hears from your input. Single notes work best, bass most of all |
 | synth midi | the synth played from a MIDI keyboard. Sustain pedal freezes |
+| sample | a sound file from your norns audio library, looping into the grains like live input |
+
+To use the sample source, pick a file in **PARAMS > sample file** (it browses `dust/audio`). **Sample speed** runs from -2x to 2x, so you can play it slower, faster, or in reverse.
+
+![sample source](docs/images/voice_sample.png)
 
 In the synth sources, a few knobs take on their synth meaning, and the screen relabels them:
 
@@ -122,7 +127,7 @@ In the synth sources, a few knobs take on their synth meaning, and the screen re
 ![bit depth](docs/images/synth_bit_depth.png)
 ![synth follow](docs/images/voice_follow.png)
 
-Settings that only matter for some sources (octave, release, dry level, pitch follow, follow threshold) hide when you don't need them.
+Settings that only matter for some sources (octave, release, dry level, pitch follow, follow threshold, sample file, sample speed) hide when you don't need them.
 
 ## Grid, arc, crow
 

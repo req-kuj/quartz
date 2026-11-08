@@ -3,7 +3,7 @@
 // plays the synth voice), 3 midi (keyboard plays the synth voice).
 
 Engine_Quartz : CroneEngine {
-	var synth, ampBus, noteBus;
+	var synth, ampBus, noteBus, sampleBuf;
 
 	*new { arg context, doneCallback;
 		^super.new(context, doneCallback);
@@ -18,9 +18,11 @@ Engine_Quartz : CroneEngine {
 			freeze=0, seed=2, quality=3, mono=1, gain=1,
 			source=0, note=48, gate=0, octave=0, glide=1, release=1.5,
 			threshold=0.02, dry_level=0, trig=0, clocked=0,
-			amp_bus=0, note_bus=0;
+			amp_bus=0, note_bus=0, samp_buf=0, use_sample=0, samp_speed=1;
 
-			var input = [In.ar(in_l), In.ar(in_r)];
+			var live = [In.ar(in_l), In.ar(in_r)];
+			var samp = PlayBuf.ar(2, samp_buf, BufRateScale.kr(samp_buf) * samp_speed, loop: 1);
+			var input = Select.ar(use_sample, [live, samp]);
 			var monoIn = Mix(input) * 0.5;
 			var tracked, hasFreq, amp, trackNote, trackGate, semis, vca, sig;
 
@@ -61,12 +63,15 @@ Engine_Quartz : CroneEngine {
 			Out.kr(note_bus, trackNote + (octave * 12));
 		}).add;
 
+		// placeholder until a sample file is loaded
+		sampleBuf = Buffer.alloc(context.server, 64, 2);
 		ampBus = Bus.control(context.server);
 		noteBus = Bus.control(context.server);
 		context.server.sync;
 
 		synth = Synth.new(\quartz, [
 			\amp_bus, ampBus.index,
+			\samp_buf, sampleBuf.bufnum,
 			\note_bus, noteBus.index,
 			\in_l, context.in_b[0].index,
 			\in_r, context.in_b[1].index,
@@ -79,9 +84,27 @@ Engine_Quartz : CroneEngine {
 			\feedback, \drywet, \reverb,
 			\freeze, \seed, \quality, \mono, \gain,
 			\source, \note, \gate, \octave, \glide, \release,
-			\threshold, \dry_level, \trig, \clocked
+			\threshold, \dry_level, \trig, \clocked, \use_sample, \samp_speed
 		].do({ arg key;
 			this.addCommand(key, "f", { arg msg; synth.set(key, msg[1]); });
+		});
+
+		// load a sound file (mono files are doubled to stereo)
+		this.addCommand(\load, "s", { arg msg;
+			var path = msg[1].asString;
+			var file = SoundFile.openRead(path);
+			if (file.notNil) {
+				var chans = if (file.numChannels > 1) { [0, 1] } { [0, 0] };
+				file.close;
+				Buffer.readChannel(context.server, path, channels: chans, action: { arg buf;
+					var old = sampleBuf;
+					sampleBuf = buf;
+					synth.set(\samp_buf, buf.bufnum);
+					old.free;
+				});
+			} {
+				("quartz: could not open " ++ path).postln;
+			};
 		});
 
 		this.addPoll("amp", { ampBus.getSynchronous });
@@ -89,6 +112,7 @@ Engine_Quartz : CroneEngine {
 	}
 
 	free {
+		sampleBuf.free;
 		ampBus.free;
 		noteBus.free;
 		synth.free;

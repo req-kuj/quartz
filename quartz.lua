@@ -24,7 +24,14 @@ local PLUGIN_DIR = _path.home .. "/.local/share/SuperCollider/Extensions/Quartz"
 local PLUGIN = PLUGIN_DIR .. "/Quartz.so"
 
 local QUALITY = {"dirty tape", "clean tape", "vintage digital", "digital"}
-local SOURCES = {"grains", "synth drone", "synth follow", "synth midi"}
+local SOURCES = {"grains", "synth drone", "synth follow", "synth midi", "sample"}
+-- engine voice for each source (sample feeds the grains like live input)
+local ENGINE_SOURCE = {0, 1, 2, 3, 0}
+
+local function is_synth()
+  local src = params:get("source")
+  return src >= 2 and src <= 4
+end
 
 -- like Beads: each main knob shares a page with its random knob
 local pages = {
@@ -43,6 +50,8 @@ local page = 1
 -- voice params that only matter for some sources
 -- (source: 1 grains, 2 synth drone, 3 synth follow, 4 synth midi)
 local ONLY_FOR = {
+  sample_file = {5},
+  sample_speed = {5},
   octave = {3, 4},
   release = {3, 4},
   dry_level = {3, 4},
@@ -248,9 +257,18 @@ local function add_params()
   params:add_separator("voice")
   params:add_option("source", "source", SOURCES, 1)
   params:set_action("source", function(v)
-    engine.source(v - 1)
+    engine.source(ENGINE_SOURCE[v])
+    engine.use_sample(v == 5 and 1 or 0)
+    -- voice page: sample speed replaces octave for the sample source
+    pages[8].b = v == 5 and "sample_speed" or "octave"
     update_visibility()
   end)
+  params:add_file("sample_file", "sample file", _path.audio)
+  params:set_action("sample_file", function(f)
+    if f and f ~= "" and f ~= "-" and f:sub(-1) ~= "/" then engine.load(f) end
+  end)
+  params:add_control("sample_speed", "sample speed", ControlSpec.new(-2, 2, "lin", 0, 1, "x"))
+  params:set_action("sample_speed", function(v) engine.samp_speed(v) end)
   params:add_number("octave", "octave", -3, 3, 0)
   params:set_action("octave", function(v) engine.octave(v) end)
   params:add_option("glide", "pitch follow", {"snap", "glide"}, 2)
@@ -510,7 +528,7 @@ local function param_label(id)
   local name = params:lookup_param(id).name
   local value = params:string(id)
   if id:find("_rnd") then name = "attenurandom" end
-  if params:get("source") > 1 then
+  if is_synth() then
     if id == "feedback" then
       name = "wavetable"
       value = "bank " .. util.clamp(math.floor(params:get("feedback") * 12) + 1, 1, 12)
