@@ -90,7 +90,7 @@ Engine_Quartz : CroneEngine {
 		});
 
 		// load a sound file (mono files are doubled to stereo)
-		this.addCommand(\load, "s", { arg msg;
+		this.addCommand(\load_sample, "s", { arg msg;
 			var path = msg[1].asString;
 			var file = SoundFile.openRead(path);
 			if (file.notNil) {

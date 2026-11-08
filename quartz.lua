@@ -18,6 +18,7 @@
 engine.name = "Quartz"
 
 local ControlSpec = require "controlspec"
+local fileselect = require "fileselect"
 local crowio = include("lib/crowio")
 
 local PLUGIN_DIR = _path.home .. "/.local/share/SuperCollider/Extensions/Quartz"
@@ -34,6 +35,8 @@ local function is_synth()
 end
 
 -- like Beads: each main knob shares a page with its random knob
+local PATCH_PAGE = {name = "patch", a = "random_patch", b = "reset_patch", actions = true}
+local SAMPLE_PAGE = {name = "sample", a = "sample_file", b = "sample_speed"}
 local pages = {
   {name = "time", a = "time", b = "time_rnd"},
   {name = "size", a = "size", b = "size_rnd"},
@@ -43,9 +46,20 @@ local pages = {
   {name = "space", a = "feedback", b = "cloud_reverb"},
   {name = "media", a = "quality", b = "gain"},
   {name = "voice", a = "source", b = "octave"},
-  {name = "patch", a = "random_patch", b = "reset_patch", actions = true},
+  PATCH_PAGE,
 }
 local page = 1
+
+-- the sample page only exists while the sample source is chosen
+local function rebuild_pages(with_sample)
+  local has = pages[#pages - 1] == SAMPLE_PAGE
+  if with_sample and not has then
+    table.insert(pages, #pages, SAMPLE_PAGE)
+  elseif not with_sample and has then
+    table.remove(pages, #pages - 1)
+  end
+  page = util.clamp(page, 1, #pages)
+end
 
 -- voice params that only matter for some sources
 -- (source: 1 grains, 2 synth drone, 3 synth follow, 4 synth midi)
@@ -208,6 +222,17 @@ function set_frozen(state)
   crowio.update_freeze()
 end
 
+-- file browser for samples, opened from the sample page
+local selecting = false
+function open_sample_browser()
+  if selecting then return end
+  selecting = true
+  fileselect.enter(_path.audio, function(path)
+    selecting = false
+    if path and path ~= "cancel" then params:set("sample_file", path) end
+  end)
+end
+
 local function add_params()
   params:add_separator("quartz")
 
@@ -259,13 +284,12 @@ local function add_params()
   params:set_action("source", function(v)
     engine.source(ENGINE_SOURCE[v])
     engine.use_sample(v == 5 and 1 or 0)
-    -- voice page: sample speed replaces octave for the sample source
-    pages[8].b = v == 5 and "sample_speed" or "octave"
+    rebuild_pages(v == 5)
     update_visibility()
   end)
   params:add_file("sample_file", "sample file", _path.audio)
   params:set_action("sample_file", function(f)
-    if f and f ~= "" and f ~= "-" and f:sub(-1) ~= "/" then engine.load(f) end
+    if f and f ~= "" and f ~= "-" and f:sub(-1) ~= "/" then engine.load_sample(f) end
   end)
   params:add_control("sample_speed", "sample speed", ControlSpec.new(-2, 2, "lin", 0, 1, "x"))
   params:set_action("sample_speed", function(v) engine.samp_speed(v) end)
@@ -347,6 +371,8 @@ function enc(n, d)
     dice_acc, reset_acc = 0, 0
   elseif pages[page].actions then
     patch_enc(n, d)
+  elseif n == 2 and pages[page].a == "sample_file" then
+    open_sample_browser()
   elseif n == 2 then
     if active(pages[page].a) then params:delta(pages[page].a, d) end
   elseif n == 3 then
@@ -436,6 +462,7 @@ end
 local function page_param(n)
   if pages[page].actions then return nil end
   local id = n == 1 and pages[page].a or pages[page].b
+  if id == "sample_file" then return nil end
   return active(id) and id or nil
 end
 
@@ -543,6 +570,17 @@ local function param_label(id)
 end
 
 local function draw_param(id, x)
+  if id == "sample_file" then
+    local f = params:get("sample_file")
+    local name = (f and f ~= "-" and f:sub(-1) ~= "/") and f:match("[^/]+$") or nil
+    screen.level(4)
+    screen.move(x, 52)
+    screen.text("file")
+    screen.level(15)
+    screen.move(x, 61)
+    screen.text(name and name:gsub("%.%w+$", ""):sub(1, 12) or "turn to pick")
+    return
+  end
   if pages[page].actions then
     screen.level(4)
     screen.move(x, 52)

@@ -80,9 +80,9 @@ Like Beads, each main knob shares a page with its attenurandomizer, the knob tha
 ![voice page](docs/images/page_8.png)
 
 - **source:** what feeds the cloud (see below)
-- **octave:** for synth follow and synth midi. With the sample source, this becomes **sample speed**
+- **octave:** only appears for synth follow and synth midi
 
-### 9 patch
+### patch (last page)
 ![patch page](docs/images/page_9.png)
 
 - **randomize:** every few clicks of encoder 2 rolls a new patch. Random but musical: no silent density, no accidental delay mode, pitch on fifths and octaves
@@ -111,9 +111,14 @@ Key 2 freezes the buffer, so you can scrub it with time. Key 3 turns the cloud o
 | synth midi | the synth played from a MIDI keyboard. Sustain pedal freezes |
 | sample | a sound file from your norns audio library, looping into the grains like live input |
 
-To use the sample source, pick a file in **PARAMS > sample file** (it browses `dust/audio`). **Sample speed** runs from -2x to 2x, so you can play it slower, faster, or in reverse.
+Choosing the sample source adds a **sample page** right before patch:
 
-![sample source](docs/images/voice_sample.png)
+- **file:** turn encoder 2 to open the file browser for your `dust/audio` library. Pick a file with key 3, back out with key 2
+- **sample speed:** -2x to 2x, so you can play it slower, faster, or in reverse
+
+You can also pick the file in **PARAMS > sample file**.
+
+![sample page](docs/images/sample_page_loaded.png)
 
 In the synth sources, a few knobs take on their synth meaning, and the screen relabels them:
 
