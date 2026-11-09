@@ -36,7 +36,7 @@ The specks are the grains: left to right is time, height is pitch.
 
 ## Pages
 
-The first four pages pair a main knob with its attenurandomizer, the knob that adds randomness to it, the way Beads does.
+Each page is named after its first knob. The first four pair a main knob with its attenurandomizer, the way Beads does.
 
 | Page | Encoder 2 | Encoder 3 |
 |---|---|---|
@@ -44,10 +44,10 @@ The first four pages pair a main knob with its attenurandomizer, the knob that a
 | 2 size | grain length; all the way right is delay mode | attenurandom |
 | 3 shape | grain envelope, clicky to soft swells | attenurandom |
 | 4 pitch | shown as intervals, like `+5th` or `-oct` | attenurandom, starts at zero to stay in tune |
-| 5 cloud | density: center is silent, left is steady, right is random | dry/wet |
-| 6 space | feedback | reverb: subtle below 0.5, a big wash above 0.7 |
-| 7 media | quality: dirty tape, clean tape, vintage digital, digital | input gain |
-| 8 voice | source (below) | octave, for synth follow and synth midi |
+| 5 density | center is silent, left is steady, right is random | dry/wet |
+| 6 feedback | longer, smeared tails | reverb: subtle below 0.5, a big wash above 0.7 |
+| 7 quality | dirty tape, clean tape, vintage digital, digital | input gain |
+| 8 source | what feeds the cloud (below) | octave, for synth follow and synth midi |
 | patch | randomize: every few clicks rolls a new patch | reset: turn until the bar fills |
 
 ![time page](docs/images/page_1.png)

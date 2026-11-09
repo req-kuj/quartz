@@ -34,7 +34,8 @@ local function is_synth()
   return src >= 2 and src <= 4
 end
 
--- like Beads: each main knob shares a page with its random knob
+-- each page is named after its encoder 2 knob; like Beads, the main
+-- knobs share a page with their attenurandomizer
 local PATCH_PAGE = {name = "patch", a = "random_patch", b = "reset_patch", actions = true}
 local SAMPLE_PAGE = {name = "sample", a = "sample_file", b = "sample_speed"}
 local pages = {
@@ -42,10 +43,10 @@ local pages = {
   {name = "size", a = "size", b = "size_rnd"},
   {name = "shape", a = "shape", b = "shape_rnd"},
   {name = "pitch", a = "pitch", b = "pitch_rnd"},
-  {name = "cloud", a = "density", b = "drywet"},
-  {name = "space", a = "feedback", b = "cloud_reverb"},
-  {name = "media", a = "quality", b = "gain"},
-  {name = "voice", a = "source", b = "octave"},
+  {name = "density", a = "density", b = "drywet"},
+  {name = "feedback", a = "feedback", b = "cloud_reverb"},
+  {name = "quality", a = "quality", b = "gain"},
+  {name = "source", a = "source", b = "octave"},
   PATCH_PAGE,
 }
 local page = 1
