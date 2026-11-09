@@ -99,6 +99,10 @@ Crow is set up in PARAMS > crow. Inputs: seed clock, freeze gate, CV to any knob
 - The specks are drawn from your settings, not read from the engine, so they show the shape of the cloud rather than each actual grain.
 - Plug in grid and arc before powering norns. Hot-plugging can brown it out. If either runs iii firmware, hold its key (top-left on grid) while plugging in and look for the "particles" pattern to switch it to standard mode.
 
+## How it was made
+
+The code was written with Claude, an AI assistant. I shaped it hands on: testing on my own norns, grid, and arc, finding what felt wrong in play, and changing it over many iterations. A lot of it came from that loop, like the source names, hiding settings that don't apply, matching the help screen to the real module, and laying the arc out to sit under norns.
+
 ## Building the sound engine
 
 `src/` has the SuperCollider UGen wrapper and the vendored DSP. `bin/quartz-plugin` is a prebuilt binary for norns. To rebuild on norns: `./build.sh g++ Quartz.so`, with SuperCollider headers available.
