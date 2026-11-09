@@ -60,7 +60,7 @@ Engine_Quartz : CroneEngine {
 			Out.ar(out, sig);
 			// for crow outputs: loudness of the cloud and the followed note
 			Out.kr(amp_bus, Amplitude.kr(Mix(sig) * 0.5, 0.01, 0.15));
-			Out.kr(note_bus, trackNote + (octave * 12));
+			Out.kr(note_bus, Select.kr(source >= 3, [trackNote, note]) + (octave * 12));
 		}).add;
 
 		// placeholder until a sample file is loaded

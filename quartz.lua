@@ -113,12 +113,19 @@ local arc_acc = {0, 0}
 local arc_page_acc = 0
 
 -- install the compiled UGen where scsynth can find it
+-- install or update the compiled UGen; returns true when a restart is needed
 local function install_plugin()
-  if util.file_exists(PLUGIN) then return false end
+  local src = norns.state.path .. "bin/quartz-plugin"
+  if util.file_exists(PLUGIN) and os.execute("cmp -s '" .. src .. "' '" .. PLUGIN .. "'") then
+    return false
+  end
   util.make_dir(PLUGIN_DIR)
-  os.execute("cp '" .. norns.state.path .. "bin/quartz-plugin' '" .. PLUGIN .. "'")
+  os.execute("cp '" .. src .. "' '" .. PLUGIN .. "'")
   return util.file_exists(PLUGIN)
 end
+
+-- settings are remembered between sessions
+local function last_state() return norns.state.data .. "last.pset" end
 
 local function seed_state()
   if cloud_on then return 2 end
@@ -354,6 +361,7 @@ end
 function init()
   needs_restart = install_plugin()
   add_params()
+  if util.file_exists(last_state()) then params:read(last_state(), true) end
   params:bang()
   update_seed()
   engine.freeze(0)
@@ -872,6 +880,7 @@ g.key = function(x, y, z)
 end
 
 function cleanup()
+  if not needs_restart then params:write(last_state()) end
   if midi_in then midi_in.event = nil end
   if g.device then
     g:all(0)

@@ -12,6 +12,8 @@ Feed it audio and it becomes a cloud of tiny grains. Or switch to the built-in w
 2. Run quartz once. It installs its sound engine and asks you to restart: **SYSTEM > RESTART**.
 3. Run quartz again.
 
+Settings are remembered between sessions. When an update includes a new sound engine, quartz installs it and asks for one more restart.
+
 ## The basics
 
 | Control | Does |
