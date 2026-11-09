@@ -64,6 +64,9 @@ end
 -- voice params that only matter for some sources
 -- (source: 1 grains, 2 synth drone, 3 synth follow, 4 synth midi)
 local ONLY_FOR = {
+  grid_lowest = {4},
+  grid_dx = {4},
+  grid_dy = {4},
   sample_file = {5},
   sample_speed = {5},
   octave = {3, 4},
@@ -285,6 +288,9 @@ local function add_params()
     engine.source(ENGINE_SOURCE[v])
     engine.use_sample(v == 5 and 1 or 0)
     rebuild_pages(v == 5)
+    -- release any held notes when leaving or entering synth midi
+    for i = #held_notes, 1, -1 do held_notes[i] = nil end
+    engine.gate(0)
     update_visibility()
   end)
   params:add_file("sample_file", "sample file", _path.audio)
@@ -303,6 +309,11 @@ local function add_params()
   params:set_action("threshold", function(v) engine.threshold(v) end)
   params:add_control("dry_level", "dry (follow/midi)", ControlSpec.new(0, 1, "lin", 0, 0))
   params:set_action("dry_level", function(v) engine.dry_level(v) end)
+  -- grid keyboard for synth midi, laid out like doubledecker:
+  -- each key right is dx semitones, each row up is dy (5 = fourths)
+  params:add_number("grid_lowest", "grid lowest note", 0, 36, 24)
+  params:add_number("grid_dx", "grid key dx", 1, 7, 1)
+  params:add_number("grid_dy", "grid key dy", 1, 12, 5)
   params:add_number("midi_device", "midi device", 1, 16, 1)
   params:set_action("midi_device", function(v) connect_midi(v) end)
 end
@@ -491,8 +502,40 @@ local function draw_specks()
 end
 
 -- mirror the specks onto the grid, brightness = life left
+local function grid_note(x, y)
+  return params:get("grid_lowest") + params:get("grid_dx") * x + params:get("grid_dy") * (8 - y)
+end
+
+local WHITE = {[0] = true, [2] = true, [4] = true, [5] = true, [7] = true, [9] = true, [11] = true}
+
+-- synth midi: the grid is a keyboard. C is brighter, other white keys dim,
+-- held notes (from grid or a MIDI keyboard) light up
+local function grid_keyboard()
+  local held = {}
+  for _, n in ipairs(held_notes) do held[n] = true end
+  g:all(0)
+  for x = 1, g.cols or 16 do
+    for y = 1, g.rows or 8 do
+      local note = grid_note(x, y)
+      local pc = note % 12
+      if held[note] then
+        g:led(x, y, 15)
+      elseif pc == 0 then
+        g:led(x, y, 6)
+      elseif WHITE[pc] then
+        g:led(x, y, 3)
+      end
+    end
+  end
+  g:refresh()
+end
+
 local function grid_redraw()
   if not g.device then return end
+  if params:get("source") == 4 then
+    grid_keyboard()
+    return
+  end
   local cols, rows = g.cols or 16, g.rows or 8
   local lit = {}
   for _, s in ipairs(specks) do
@@ -815,6 +858,17 @@ function redraw()
   draw_param(pages[page].a, 0)
   draw_param(pages[page].b, 66)
   screen.update()
+end
+
+-- grid keys play notes in synth midi, sharing MIDI's last-note priority
+g.key = function(x, y, z)
+  if params:get("source") ~= 4 then return end
+  local note = grid_note(x, y)
+  for i = #held_notes, 1, -1 do
+    if held_notes[i] == note then table.remove(held_notes, i) end
+  end
+  if z == 1 then table.insert(held_notes, note) end
+  play_top_note()
 end
 
 function cleanup()
