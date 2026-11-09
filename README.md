@@ -2,19 +2,25 @@
 
 A granular texture synth for [norns](https://monome.org/docs/norns/), running the open-source Beads DSP by Emilie Gillet.
 
-Feed it audio and it becomes a cloud of tiny grains. Or switch to the built-in wavetable synth and play it as a drone, from your instrument's pitch, or from a MIDI keyboard. Grid, arc, and crow are all optional extras.
+It started as an idea for a line-level Beads pedal. norns turned out to be the pedal: stereo line in and out, plenty of headroom for the DSP, and grid, arc, and crow if you have them.
+
+Feed it audio and it becomes a cloud of tiny grains. Or switch to the built-in wavetable synth and play it as a drone, from your instrument's pitch, or from a MIDI keyboard.
 
 ![help screen](docs/images/splash.png)
 
 ## Install
 
-1. Copy the `quartz` folder into `dust/code/` on your norns. Over Wi-Fi, connect to `smb://norns.local` (user `we`, password `sleep`).
-2. Run quartz once. It installs its sound engine and asks you to restart: **SYSTEM > RESTART**.
-3. Run quartz again.
+From maiden:
 
-Settings are remembered between sessions. When an update includes a new sound engine, quartz installs it and asks for one more restart.
+```
+;install https://github.com/req-kuj/quartz
+```
 
-## The basics
+Then run quartz once. It installs its sound engine and asks for **SYSTEM > RESTART**. Run it again and you're set.
+
+To update, delete `dust/code/quartz` and install again. If an update includes a new sound engine, quartz asks for one more restart. Settings are remembered between sessions.
+
+## Controls
 
 | Control | Does |
 |---|---|
@@ -26,91 +32,35 @@ Settings are remembered between sessions. When an update includes a new sound en
 | Key 1 + key 2 | random patch |
 | Hold key 1 | help |
 
-When quartz starts, the help screen shows for a 3, 2, 1 countdown. Hold key 1 any time to see it again. The panel on the right mirrors the Beads module's layout: every knob shows its value, and the two on your current page light up.
+The help screen shows for a 3, 2, 1 countdown at launch, and whenever you hold key 1. Its panel follows the Beads module's layout: every knob shows its value, and the two on your current page light up.
 
 ![help while holding key 1](docs/images/help_hold_k1.png)
 
-The specks across the screen are the grains, and they show the sound:
-
-- **left to right** is time: recent grains on the right, older ones to the left
-- **height** is pitch: higher pitch floats up
-- **spread** is attenurandom: more randomness, wider scatter
-- **fade** is shape (sharp blink to slow swell), and **length** is size
-- **brightness** follows the cloud's actual loudness
-- **density** left of center pulses evenly, right of center scatters randomly
-
-The grid shows the same picture.
+The specks across the screen stand for grains. Left to right is time, with recent grains on the right. Height is pitch. Spread is attenurandom. Each speck fades by shape and lasts by size, and brightness follows the cloud's actual loudness. Density left of center pulses evenly, right of center scatters. The grid shows the same picture.
 
 ## Pages
 
-Like Beads, each main knob shares a page with its attenurandomizer, the knob that adds randomness to it.
+The first four pages pair a main knob with its attenurandomizer, the knob that adds randomness to it, the way Beads does.
 
-### 1 time
+| Page | Encoder 2 | Encoder 3 |
+|---|---|---|
+| 1 time | how far back in the recording grains read from | attenurandom |
+| 2 size | grain length; all the way right is delay mode | attenurandom |
+| 3 shape | grain envelope, clicky to soft swells | attenurandom |
+| 4 pitch | shown as intervals, like `+5th` or `-oct` | attenurandom, starts at zero to stay in tune |
+| 5 cloud | density: center is silent, left is steady, right is random | dry/wet |
+| 6 space | feedback | reverb: subtle below 0.5, a big wash above 0.7 |
+| 7 media | quality: dirty tape, clean tape, vintage digital, digital | input gain |
+| 8 voice | source (below) | octave, for synth follow and synth midi |
+| patch | randomize: every few clicks rolls a new patch | reset: turn until the bar fills |
+
 ![time page](docs/images/page_1.png)
 
-- **time:** how far back in the recording grains read from
-- **attenurandom:** randomness on time
+Randomize stays musical: no silent density, no accidental delay mode, pitch on fifths and octaves. It leaves the four attenurandomizers where you set them, since small moves there swing their knobs a lot. Neither randomize nor reset touches your source, input, or MIDI setup.
 
-### 2 size
-![size page](docs/images/page_2.png)
+![patch page](docs/images/patch_reset_half.png)
 
-- **size:** grain length. All the way right switches to delay mode
-- **attenurandom:** randomness on size
-
-### 3 shape
-![shape page](docs/images/page_3.png)
-
-- **shape:** grain envelope, from clicky to soft swells
-- **attenurandom:** randomness on shape
-
-### 4 pitch
-![pitch page](docs/images/page_4.png)
-
-- **pitch:** shown as intervals, like `+5th` or `-oct`
-- **attenurandom:** randomness on pitch. Starts at zero so things stay in tune
-
-### 5 cloud
-![cloud page](docs/images/page_5.png)
-
-- **density:** center is silent. Left gives steady grains, right gives random ones, more the farther you turn
-- **dry/wet:** your input vs the cloud
-
-### 6 space
-![space page](docs/images/page_6.png)
-
-- **feedback:** longer, smeared tails
-- **reverb:** subtle in the lower half, a big wash above 0.7
-
-### 7 media
-![media page](docs/images/page_7.png)
-
-- **quality:** dirty tape, clean tape, vintage digital, or digital. Changes the buffer's length and character
-- **input gain**
-
-### 8 voice
-![voice page](docs/images/page_8.png)
-
-- **source:** what feeds the cloud (see below)
-- **octave:** only appears for synth follow and synth midi
-
-### patch (last page)
-![patch page](docs/images/page_9.png)
-
-- **randomize:** every few clicks of encoder 2 rolls a new patch. Random but musical: no silent density, no accidental delay mode, pitch on fifths and octaves
-- **reset:** turn encoder 3 until the bar fills. Hard to do by accident
-
-![resetting](docs/images/patch_reset_half.png)
-
-Randomize leaves the four attenurandomizers where you set them, since small moves there swing their knobs a lot. Reset sets everything back to defaults. Neither touches your source, input, or MIDI setup. The title flashes to confirm:
-
-![randomized](docs/images/randomized.png)
-
-## Status
-
-Key 2 freezes the buffer, so you can scrub it with time. Key 3 turns the cloud off.
-
-![frozen](docs/images/frozen.png)
-![cloud off](docs/images/cloud_off.png)
+Freeze holds the buffer so you can scrub it with time. Grains keep playing from what's frozen, as on Beads.
 
 ## Sources
 
@@ -118,42 +68,38 @@ Key 2 freezes the buffer, so you can scrub it with time. Key 3 turns the cloud o
 |---|---|
 | grains | your live input, turned into a cloud |
 | synth drone | the wavetable synth, playing nonstop at the pitch you set |
-| synth follow | the synth playing the notes it hears from your input. Single notes work best, bass most of all |
-| synth midi | the synth played from a MIDI keyboard. Sustain pedal freezes |
-| sample | a sound file from your norns audio library, looping into the grains like live input |
+| synth follow | the synth playing the notes it hears from your input |
+| synth midi | the synth played from a MIDI keyboard or the grid. Sustain pedal freezes |
+| sample | a sound file from `dust/audio`, looping into the grains like live input |
 
-Choosing the sample source adds a **sample page** right before patch:
-
-- **file:** turn encoder 2 to open the file browser for your `dust/audio` library. Pick a file with key 3, back out with key 2
-- **sample speed:** -2x to 2x, so you can play it slower, faster, or in reverse
-
-You can also pick the file in **PARAMS > sample file**.
+The sample source adds a page before patch. Turn encoder 2 there to open the file browser (key 3 picks, key 2 backs out). Encoder 3 sets speed from -2x to 2x, so reverse works too.
 
 ![sample page](docs/images/sample_page_loaded.png)
 
-In the synth sources, a few knobs take on their synth meaning, and the screen relabels them:
+In the three synth sources, some knobs take on their Beads synth meaning, and the screen relabels them: feedback picks the wavetable bank, dry/wet becomes osc/cloud, quality becomes bit depth, and in synth drone pitch shows the note itself, like `C3`.
 
-- **pitch** becomes the note itself in synth drone, like `C3`
-- **feedback** becomes **wavetable**, picking bank 1 to 12
-- **dry/wet** becomes **osc/cloud**
-- **quality** becomes **bit depth**, 4-bit to 16-bit
-
-![synth drone pitch](docs/images/synth_drone_pitch.png)
 ![wavetable](docs/images/synth_wavetable.png)
-![bit depth](docs/images/synth_bit_depth.png)
-![synth follow](docs/images/voice_follow.png)
 
-Settings that only matter for some sources (octave, release, dry level, pitch follow, follow threshold, sample file, sample speed) hide when you don't need them.
+Settings that only matter for some sources hide when you don't need them.
 
 ## Grid, arc, crow
 
-- **Grid** mirrors the cloud, each grain lighting a key and fading. In **synth midi**, it becomes a keyboard laid out like [doubledecker](https://github.com/sixolet/doubledecker): each key right is a semitone, each row up is a fourth. C keys are brighter, other white keys dim, and held notes light up, including notes from a MIDI keyboard. Lowest note and the row and key intervals are in PARAMS.
-- **Arc** lines up with norns: ring 1 flips pages like encoder 1, and rings 2 and 3 are encoders 2 and 3, showing the current page's knobs. Pages and choices are laid out like a knob, first on the lower left sweeping clockwise to the lower right.
-- **Crow** is set up in PARAMS > crow. Inputs can be seed clock, freeze gate, CV to any knob, or V/oct to pitch. Outputs can be the followed pitch, the cloud's envelope, random CV, or a freeze gate.
+Grid mirrors the cloud. In synth midi it turns into a keyboard laid out like [doubledecker](https://github.com/sixolet/doubledecker): a semitone per key across, a fourth per row up. C keys are brighter, and held notes light up, including ones from a MIDI keyboard.
 
-If your grid or arc runs iii firmware, switch it to standard mode first: hold its key (top-left key on grid) while plugging it in, and look for the "particles" startup pattern. Plug devices in before powering norns.
+Arc lines up with norns sitting above it: ring 1 turns pages, rings 2 and 3 match encoders 2 and 3. Pages and choices sweep like a knob, lower left to lower right.
 
-## Building the sound engine yourself
+Crow is set up in PARAMS > crow. Inputs: seed clock, freeze gate, CV to any knob, or V/oct to pitch. Outputs: followed pitch, the cloud's envelope, random CV, or a freeze gate.
+
+## Known limits
+
+- Synth follow tracks single notes. Chords confuse it, and bass tracks best.
+- Crow support and the grid keyboard haven't been tested on hardware yet.
+- Samples must be WAV, AIFF, or FLAC. MP3 won't load. The whole file loops.
+- Grains mode uses about 35% CPU on a stock norns, more with high density and big grains.
+- The specks are drawn from your settings, not read from the engine, so they show the shape of the cloud rather than each actual grain.
+- Plug in grid and arc before powering norns. Hot-plugging can brown it out. If either runs iii firmware, hold its key (top-left on grid) while plugging in and look for the "particles" pattern to switch it to standard mode.
+
+## Building the sound engine
 
 `src/` has the SuperCollider UGen wrapper and the vendored DSP. `bin/quartz-plugin` is a prebuilt binary for norns. To rebuild on norns: `./build.sh g++ Quartz.so`, with SuperCollider headers available.
 
