@@ -421,24 +421,72 @@ function key(n, z)
   end
 end
 
-local function draw_specks()
-  local rate = params:get("density")
-  local busy = math.abs(rate - 0.5) * 2
-  if burst then busy = 1 end
-  if (cloud_on or burst) and not frozen and math.random() < busy then
-    table.insert(specks, {
-      x = math.random(4, 124),
-      y = math.random(14, 40),
-      life = 4 + math.floor(params:get("size") * 12),
-    })
+-- each speck is a grain:
+--   x = time (recent on the right, older to the left)
+--   y = pitch (higher pitch floats up)
+--   spread = attenurandom on time and pitch
+--   fade = shape (sharp blink to slow swell), length = size
+--   brightness follows the cloud's actual loudness
+--   left of center density pulses evenly, right of center scatters
+local clock_phase = 0
+local SPECK_X0, SPECK_X1, SPECK_Y0, SPECK_Y1 = 4, 124, 14, 40
+
+local function spawn_speck()
+  local spread_t = math.abs(params:get("time_rnd"))
+  local spread_p = math.abs(params:get("pitch_rnd"))
+  local function jitter(amt) return (math.random() + math.random() - 1) * amt end
+  local x = util.linlin(0, 1, SPECK_X1, SPECK_X0, params:get("time")) + jitter(3 + spread_t * 50)
+  local y = util.linlin(-24, 24, SPECK_Y1, SPECK_Y0, params:get("pitch")) + jitter(1.5 + spread_p * 14)
+  table.insert(specks, {
+    x = util.round(util.clamp(x, SPECK_X0, SPECK_X1)),
+    y = util.round(util.clamp(y, SPECK_Y0, SPECK_Y1)),
+    age = 0,
+    life = 4 + math.floor(params:get("size") * 16),
+    shape = params:get("shape"),
+    level = 0,
+  })
+end
+
+local function spawn_grains()
+  if not (cloud_on or burst) then return end
+  local d = params:get("density")
+  if burst then
+    for _ = 1, 3 do spawn_speck() end
+  elseif d < 0.48 then
+    -- clocked: even pulses, faster the farther left
+    local rate = util.linlin(0, 0.48, 1.0, 0.08, d)
+    clock_phase = clock_phase + rate
+    while clock_phase >= 1 do
+      clock_phase = clock_phase - 1
+      spawn_speck()
+    end
+  elseif d > 0.52 then
+    -- random: chance per frame, more the farther right
+    local chance = util.linlin(0.52, 1, 0.05, 1.6, d)
+    while chance > 0 do
+      if math.random() < chance then spawn_speck() end
+      chance = chance - 1
+    end
   end
+end
+
+local function draw_specks()
+  spawn_grains()
+  local amp = crowio.amp
+  local gain = amp and util.clamp(amp * 12, 0.15, 1) or 1
   for i = #specks, 1, -1 do
     local s = specks[i]
-    screen.level(math.min(15, s.life))
-    screen.pixel(s.x, s.y)
-    screen.fill()
-    if not frozen then s.life = s.life - 1 end
-    if s.life <= 0 then table.remove(specks, i) end
+    local t = s.age / s.life
+    -- shape blends a sharp decay into a rise-and-fall swell
+    local env = (1 - s.shape) * (1 - t) + s.shape * math.sin(math.pi * t)
+    s.level = util.clamp(util.round(15 * env * gain), 0, 15)
+    if s.level > 0 then
+      screen.level(s.level)
+      screen.pixel(s.x, s.y)
+      screen.fill()
+    end
+    s.age = s.age + 1
+    if s.age > s.life then table.remove(specks, i) end
   end
 end
 
@@ -451,7 +499,7 @@ local function grid_redraw()
     local c = util.round(util.linlin(4, 124, 1, cols, s.x))
     local r = util.round(util.linlin(14, 40, 1, rows, s.y))
     local key = c .. ":" .. r
-    lit[key] = math.max(lit[key] or 0, math.min(15, s.life))
+    lit[key] = math.max(lit[key] or 0, s.level)
   end
   g:all(0)
   for key, level in pairs(lit) do

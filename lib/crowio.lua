@@ -100,6 +100,7 @@ function M.init()
   local function connected() return crow and crow.connected and crow.connected() end
 
   local amp_poll = poll.set("amp", function(v)
+    M.amp = v   -- also drives the screen's brightness
     if not connected() then return end
     for o = 1, 4 do
       if out_mode(o) == 3 then crow.output[o].volts = util.clamp(v * 10, 0, 5) end

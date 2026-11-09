@@ -28,7 +28,16 @@ When quartz starts, the help screen shows for a 3, 2, 1 countdown. Hold key 1 an
 
 ![help while holding key 1](docs/images/help_hold_k1.png)
 
-The specks across the screen are the cloud: busier with more density, longer with bigger grains, and still when frozen.
+The specks across the screen are the grains, and they show the sound:
+
+- **left to right** is time: recent grains on the right, older ones to the left
+- **height** is pitch: higher pitch floats up
+- **spread** is attenurandom: more randomness, wider scatter
+- **fade** is shape (sharp blink to slow swell), and **length** is size
+- **brightness** follows the cloud's actual loudness
+- **density** left of center pulses evenly, right of center scatters randomly
+
+The grid shows the same picture.
 
 ## Pages
 
