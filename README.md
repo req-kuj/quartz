@@ -148,7 +148,7 @@ Settings that only matter for some sources (octave, release, dry level, pitch fo
 ## Grid, arc, crow
 
 - **Grid** mirrors the cloud, each grain lighting a key and fading. In **synth midi**, it becomes a keyboard laid out like [doubledecker](https://github.com/sixolet/doubledecker): each key right is a semitone, each row up is a fourth. C keys are brighter, other white keys dim, and held notes light up, including notes from a MIDI keyboard. Lowest note and the row and key intervals are in PARAMS.
-- **Arc** rings 1 and 2 are encoders 2 and 3, showing the current page's knobs. Ring 3 flips pages, with the current one lit.
+- **Arc** lines up with norns: ring 1 flips pages like encoder 1, and rings 2 and 3 are encoders 2 and 3, showing the current page's knobs. Pages and choices are laid out like a knob, first on the lower left sweeping clockwise to the lower right.
 - **Crow** is set up in PARAMS > crow. Inputs can be seed clock, freeze gate, CV to any knob, or V/oct to pitch. Outputs can be the followed pitch, the cloud's envelope, random CV, or a freeze gate.
 
 If your grid or arc runs iii firmware, switch it to standard mode first: hold its key (top-left key on grid) while plugging it in, and look for the "particles" startup pattern. Plug devices in before powering norns.

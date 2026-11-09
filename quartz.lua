@@ -11,8 +11,8 @@
 -- hold key 1: help
 --
 -- grid shows the cloud
--- arc 1, 2 = encoder 2, 3
--- arc 3 = encoder 1 (page)
+-- arc 1 = encoder 1 (page)
+-- arc 2, 3 = encoder 2, 3
 -- crow: set up in PARAMS
 
 engine.name = "Quartz"
@@ -579,52 +579,55 @@ local function param_shape(id)
   end
 end
 
+-- segments laid out like a knob: first on the lower left, sweeping
+-- clockwise over the top to the lower right (270 degrees)
+local function arc_segments(ring, count, current)
+  local seg = math.floor(48 / count)
+  local start = 1 - math.floor(seg * count / 2)
+  for s = 0, count - 1 do
+    local level = (s + 1 == current) and 15 or 2
+    for i = 0, math.max(1, seg - 1) - 1 do
+      a:led(ring, util.wrap(start + s * seg + i, 1, 64), level)
+    end
+  end
+end
+
+-- ring 1 turns pages, rings 2 and 3 are encoders 2 and 3
 local function arc_redraw()
   if not a.device then return end
   a:all(0)
+  arc_segments(1, #pages, page)
   for n = 1, 2 do
+    local ring = n + 1
     local id = page_param(n)
     local pos, bipolar, steps
     if id then pos, bipolar, steps = param_shape(id) end
     if not id then
       -- param not used by this source: ring stays dark
     elseif steps then
-      -- one lit segment per choice, the current one bright
-      local seg = math.floor(64 / steps)
-      for s = 0, steps - 1 do
-        local level = (s == util.round(pos * (steps - 1))) and 15 or 2
-        for i = 1, math.max(1, seg - 1) do
-          a:led(n, s * seg + i, level)
-        end
-      end
+      -- one segment per choice, the current one bright
+      arc_segments(ring, steps, util.round(pos * (steps - 1)) + 1)
     elseif bipolar then
       -- fill from the top, clockwise for positive, counterclockwise for negative
       local amt = util.round((pos - 0.5) * 64)
-      a:led(n, 1, 6)
+      a:led(ring, 1, 6)
       for i = 1, math.abs(amt) do
         local led = amt > 0 and (1 + i) or (65 - i)
-        a:led(n, util.wrap(led, 1, 64), 12)
+        a:led(ring, util.wrap(led, 1, 64), 12)
       end
     else
       local lit = util.round(pos * 64)
       for i = 1, 64 do
-        a:led(n, i, i <= lit and 12 or 1)
+        a:led(ring, i, i <= lit and 12 or 1)
       end
-    end
-  end
-  -- ring 3: one segment per page, current page bright
-  local seg = math.floor(64 / #pages)
-  for pg = 1, #pages do
-    for i = 1, seg - 1 do
-      a:led(3, (pg - 1) * seg + i, pg == page and 15 or 2)
     end
   end
   a:refresh()
 end
 
 a.delta = function(n, d)
-  if n == 3 then
-    -- ring 3 flips pages, like encoder 1
+  if n == 1 then
+    -- ring 1 flips pages, like encoder 1
     arc_page_acc = arc_page_acc + d
     if math.abs(arc_page_acc) >= 24 then
       enc(1, arc_page_acc > 0 and 1 or -1)
@@ -632,7 +635,8 @@ a.delta = function(n, d)
     end
     return
   end
-  if n > 2 then return end
+  if n > 3 then return end
+  n = n - 1   -- rings 2 and 3 are encoders 2 and 3
   local id = page_param(n)
   if not id then return end
   local p = params:lookup_param(id)
