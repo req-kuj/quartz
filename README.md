@@ -1,10 +1,6 @@
 # quartz
 
-A granular texture synth for [norns](https://monome.org/docs/norns/), running the open-source Beads DSP by Emilie Gillet.
-
-It started as an idea for a line-level Beads pedal. norns turned out to be the pedal: stereo line in and out, plenty of headroom for the DSP, and grid, arc, and crow if you have them.
-
-Feed it audio and it becomes a cloud of tiny grains. Or switch to the built-in wavetable synth and play it as a drone, from your instrument's pitch, or from a MIDI keyboard.
+A granular texture synth for [norns](https://monome.org/docs/norns/), running the open-source Beads DSP by Emilie Gillet. Feed it audio and it becomes a cloud of grains, or play its wavetable synth.
 
 ![help screen](docs/images/splash.png)
 
@@ -36,7 +32,7 @@ The help screen shows for a 3, 2, 1 countdown at launch, and whenever you hold k
 
 ![help while holding key 1](docs/images/help_hold_k1.png)
 
-The specks across the screen stand for grains. Left to right is time, with recent grains on the right. Height is pitch. Spread is attenurandom. Each speck fades by shape and lasts by size, and brightness follows the cloud's actual loudness. Density left of center pulses evenly, right of center scatters. The grid shows the same picture.
+The specks are the grains: left to right is time, height is pitch.
 
 ## Pages
 
@@ -56,7 +52,7 @@ The first four pages pair a main knob with its attenurandomizer, the knob that a
 
 ![time page](docs/images/page_1.png)
 
-Randomize stays musical: no silent density, no accidental delay mode, pitch on fifths and octaves. It leaves the four attenurandomizers where you set them, since small moves there swing their knobs a lot. Neither randomize nor reset touches your source, input, or MIDI setup.
+Randomize leaves the attenurandomizers alone. Neither randomize nor reset touches your source or MIDI setup.
 
 ![patch page](docs/images/patch_reset_half.png)
 
@@ -76,11 +72,9 @@ The sample source adds a page before patch. Turn encoder 2 there to open the fil
 
 ![sample page](docs/images/sample_page_loaded.png)
 
-In the three synth sources, some knobs take on their Beads synth meaning, and the screen relabels them: feedback picks the wavetable bank, dry/wet becomes osc/cloud, quality becomes bit depth, and in synth drone pitch shows the note itself, like `C3`.
+In the synth sources, the screen relabels knobs that change meaning.
 
 ![wavetable](docs/images/synth_wavetable.png)
-
-Settings that only matter for some sources hide when you don't need them.
 
 ## Grid, arc, crow
 
