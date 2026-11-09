@@ -188,7 +188,8 @@ local function reset_patch()
   flash("reset")
 end
 
--- random but musical: avoids silent density, delay mode, and wild pitch
+-- random but musical: avoids silent density, delay mode, and wild pitch.
+-- the four attenurandomizers stay where you set them
 local function random_patch()
   local function r(lo, hi) return lo + math.random() * (hi - lo) end
   local intervals = {0, 0, 7, 12, -12, 5, -5, 19}
@@ -197,10 +198,7 @@ local function random_patch()
   params:set("shape", r(0, 1))
   params:set("pitch", intervals[math.random(#intervals)])
   params:set("density", math.random() < 0.5 and r(0.05, 0.42) or r(0.58, 0.98))
-  params:set("time_rnd", r(-0.5, 0.5))
-  params:set("size_rnd", r(-0.4, 0.4))
-  params:set("shape_rnd", r(-0.4, 0.4))
-  params:set("pitch_rnd", r(0, 0.15))
+  -- attenurandomizers are left alone: small moves swing their knobs a lot
   params:set("drywet", r(0.4, 1))
   params:set("feedback", r(0, 0.6))
   params:set("cloud_reverb", r(0, 0.8))

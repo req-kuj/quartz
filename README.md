@@ -101,7 +101,7 @@ Like Beads, each main knob shares a page with its attenurandomizer, the knob tha
 
 ![resetting](docs/images/patch_reset_half.png)
 
-Both only touch the sound knobs, never your source, input, or MIDI setup. The title flashes to confirm:
+Randomize leaves the four attenurandomizers where you set them, since small moves there swing their knobs a lot. Reset sets everything back to defaults. Neither touches your source, input, or MIDI setup. The title flashes to confirm:
 
 ![randomized](docs/images/randomized.png)
 
