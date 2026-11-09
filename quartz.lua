@@ -848,7 +848,12 @@ function redraw()
   screen.text(toast or "quartz")
   screen.level(4)
   screen.move(128, 7)
-  screen.text_right(pages[page].name .. " " .. page .. "/" .. #pages)
+  -- the title is the first knob's label, so it follows synth relabels
+  local title = pages[page].name
+  if not pages[page].actions and pages[page] ~= SAMPLE_PAGE then
+    title = param_label(pages[page].a)
+  end
+  screen.text_right(title .. " " .. page .. "/" .. #pages)
 
   draw_specks()
   grid_redraw()

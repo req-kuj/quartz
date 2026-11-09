@@ -72,7 +72,7 @@ The sample source adds a page before patch. Turn encoder 2 there to open the fil
 
 ![sample page](docs/images/sample_page_loaded.png)
 
-In the synth sources, the screen relabels knobs that change meaning.
+In the synth sources, the screen relabels knobs that change meaning, page titles included.
 
 ![wavetable](docs/images/synth_wavetable.png)
 
