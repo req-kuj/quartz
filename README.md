@@ -87,7 +87,7 @@ Crow is set up in PARAMS > crow. Inputs: seed clock, freeze gate, CV to any knob
 ## Known limits
 
 - Synth follow tracks single notes. Chords confuse it, and bass tracks best.
-- Crow support and the grid keyboard haven't been tested on hardware yet.
+- Crow support hasn't been tested on hardware yet.
 - Samples must be WAV, AIFF, or FLAC. MP3 won't load. The whole file loops.
 - Grains mode uses about 35% CPU on a stock norns, more with high density and big grains.
 - The specks are drawn from your settings, not read from the engine, so they show the shape of the cloud rather than each actual grain.
