@@ -2,7 +2,7 @@
 
 A granular texture synth for [norns](https://monome.org/docs/norns/), running the open-source Beads DSP by Emilie Gillet. Feed it audio and it becomes a cloud of grains, or play its wavetable synth.
 
-![help screen](docs/images/splash.png)
+![quartz main screen](docs/images/main.png)
 
 ## Install
 
@@ -49,8 +49,6 @@ Each page is named after its first knob. The first four pair a main knob with it
 | 7 quality | dirty tape, clean tape, vintage digital, digital | input gain |
 | 8 source | what feeds the cloud (below) | octave, for synth follow and synth midi |
 | patch | randomize: every few clicks rolls a new patch | reset: turn until the bar fills |
-
-![time page](docs/images/page_1.png)
 
 Randomize leaves the attenurandomizers alone. Neither randomize nor reset touches your source or MIDI setup.
 
