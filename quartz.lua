@@ -283,8 +283,8 @@ local function add_params()
   })
 
   params:add_separator("input")
-  params:add_option("input", "input", {"stereo", "mono (left)"}, 2)
-  params:set_action("input", function(v) engine.mono(v - 1) end)
+  params:add_option("input_mode", "input", {"stereo", "mono (left)"}, 2)
+  params:set_action("input_mode", function(v) engine.mono(v - 1) end)
   params:add_control("gain", "input gain", ControlSpec.new(0, 4, "lin", 0, 1))
   params:set_action("gain", function(v) engine.gain(v) end)
 
