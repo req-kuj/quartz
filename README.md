@@ -32,7 +32,7 @@ The help screen shows for a 3, 2, 1 countdown at launch, and whenever you hold k
 
 ![help while holding key 1](docs/images/help_hold_k1.png)
 
-The specks are the grains: left to right is time, height is pitch.
+The screen shows the tape, the way the Beads manual pictures it. The bar on the right is the record head, and your audio scrolls left as it ages. Each tick is a grain reading from the tape at its time position. Higher pitch drifts toward the record head, lower drifts away. Freeze stops the tape. The synth sources show a live scope of the output instead.
 
 ## Pages
 
@@ -88,7 +88,7 @@ Crow is set up in PARAMS > crow. Inputs: seed clock, freeze gate, CV to any knob
 - Crow support hasn't been tested on hardware yet.
 - Samples must be WAV, AIFF, or FLAC. MP3 won't load. The whole file loops.
 - Grains mode uses about 35% CPU on a stock norns, more with high density and big grains.
-- The specks are drawn from your settings, not read from the engine, so they show the shape of the cloud rather than each actual grain.
+- The tape's audio and the scope are live from the engine, but the grain ticks are drawn from your settings, so they show the shape of the cloud rather than each actual grain.
 - Plug in grid and arc before powering norns. Hot-plugging can brown it out. If either runs iii firmware, hold its key (top-left on grid) while plugging in and look for the "particles" pattern to switch it to standard mode.
 
 ## Building the sound engine

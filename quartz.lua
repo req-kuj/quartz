@@ -108,6 +108,11 @@ local needs_restart = false
 local midi_in
 local held_notes = {}
 local specks = {}
+-- view state, declared early so param actions can reach it
+local tape = {}            -- recorded level per column, oldest first
+local scope_pts            -- latest scope snapshot from the engine
+local clear_tape
+local prev_osc_event, on_osc
 local g = grid.connect()
 local a = arc.connect()
 local arc_acc = {0, 0}
@@ -270,7 +275,10 @@ local function add_params()
   params:add_control("drywet", "dry/wet", ControlSpec.new(0, 1, "lin", 0, 0.6))
   params:set_action("drywet", function(v) engine.drywet(v) end)
   params:add_option("quality", "quality", QUALITY, 4)
-  params:set_action("quality", function(v) engine.quality(v - 1) end)
+  params:set_action("quality", function(v)
+    engine.quality(v - 1)
+    clear_tape()   -- Beads starts a fresh buffer when the mode changes
+  end)
 
   params:add_trigger("random_patch", "randomize patch")
   params:set_action("random_patch", function() random_patch() end)
@@ -284,7 +292,10 @@ local function add_params()
 
   params:add_separator("input")
   params:add_option("input_mode", "input", {"stereo", "mono (left)"}, 2)
-  params:set_action("input_mode", function(v) engine.mono(v - 1) end)
+  params:set_action("input_mode", function(v)
+    engine.mono(v - 1)
+    clear_tape()
+  end)
   params:add_control("gain", "input gain", ControlSpec.new(0, 4, "lin", 0, 1))
   params:set_action("gain", function(v) engine.gain(v) end)
 
@@ -292,6 +303,9 @@ local function add_params()
   params:add_option("source", "source", SOURCES, 1)
   params:set_action("source", function(v)
     engine.source(ENGINE_SOURCE[v])
+    -- the scope only runs for the synth sources
+    if engine.scope then engine.scope((v >= 2 and v <= 4) and 1 or 0) end
+    scope_pts = nil
     engine.use_sample(v == 5 and 1 or 0)
     rebuild_pages(v == 5)
     -- release any held notes when leaving or entering synth midi
@@ -359,12 +373,21 @@ end
 
 function init()
   needs_restart = install_plugin()
+  -- a new engine file only loads after a restart; until then, ask for one
+  if not engine.scope then needs_restart = true end
   add_params()
   if util.file_exists(last_state()) then params:read(last_state(), true) end
   params:bang()
   update_seed()
   engine.freeze(0)
   crowio.init()
+  local in_poll = poll.set("in_amp", function(v) tape_input(v) end)
+  if in_poll then
+    in_poll.time = 0.02
+    in_poll:start()
+  end
+  prev_osc_event = osc.event
+  osc.event = on_osc
 
   local frame = metro.init()
   frame.time = 1 / 20
@@ -439,25 +462,66 @@ function key(n, z)
   end
 end
 
--- each speck is a grain:
---   x = time (recent on the right, older to the left)
---   y = pitch (higher pitch floats up)
---   spread = attenurandom on time and pitch
---   fade = shape (sharp blink to slow swell), length = size
---   brightness follows the cloud's actual loudness
---   left of center density pulses evenly, right of center scatters
+-- main view. grains and sample show a tape: the record head sits on the
+-- right, recorded audio scrolls left as it ages, and each grain is a tick
+-- on the tape at its time position. pitch makes a grain drift: toward the
+-- record head when higher, away when lower. freeze stops the tape, and the
+-- heads keep reading through what's held.
+-- the synth sources show a live scope of the output instead.
+local TAPE_X0, TAPE_X1, REC_X, VIEW_Y = 4, 116, 120, 27
+local TAPE_W = TAPE_X1 - TAPE_X0
+local FPS = 20
+
+-- buffer length in seconds per quality mode, [stereo, mono], measured from
+-- the Beads DSP. the time knob maps linearly across it.
+local BUFFER_SECONDS = {{16, 32}, {10.67, 21.33}, {8, 16}, {4, 8}}
+
+local function buffer_seconds()
+  return BUFFER_SECONDS[params:get("quality")][params:get("input_mode")]
+end
+
+local tape_peak = 0        -- loudest input since the last column
+local tape_clock = 0
 local clock_phase = 0
-local SPECK_X0, SPECK_X1, SPECK_Y0, SPECK_Y1 = 4, 124, 14, 40
+
+clear_tape = function()
+  for i = 1, TAPE_W + 1 do tape[i] = 0 end
+  tape_peak, tape_clock = 0, 0
+end
+clear_tape()
+
+-- called from the in_amp poll
+function tape_input(v)
+  if v > tape_peak then tape_peak = v end
+end
+
+local function advance_tape()
+  if frozen then return end
+  tape_clock = tape_clock + 1 / FPS
+  local column = buffer_seconds() / (TAPE_W + 1)
+  while tape_clock >= column do
+    tape_clock = tape_clock - column
+    table.remove(tape, 1)
+    table.insert(tape, tape_peak)
+    tape_peak = 0
+  end
+end
 
 local function spawn_speck()
   local spread_t = math.abs(params:get("time_rnd"))
   local spread_p = math.abs(params:get("pitch_rnd"))
   local function jitter(amt) return (math.random() + math.random() - 1) * amt end
-  local x = util.linlin(0, 1, SPECK_X1, SPECK_X0, params:get("time")) + jitter(3 + spread_t * 50)
-  local y = util.linlin(-24, 24, SPECK_Y1, SPECK_Y0, params:get("pitch")) + jitter(1.5 + spread_p * 14)
+  local time = util.clamp(params:get("time") + jitter(spread_t * 0.4), 0, 1)
+  local semis = params:get("pitch") + jitter(spread_p * 12)
+  local ratio = 2 ^ (semis / 12)
+  -- relative to the record head, a playing grain moves at (ratio - 1);
+  -- once frozen the tape stops, so it moves at the full ratio
+  local speed = (frozen and ratio or ratio - 1) * TAPE_W / buffer_seconds() / FPS
   table.insert(specks, {
-    x = util.round(util.clamp(x, SPECK_X0, SPECK_X1)),
-    y = util.round(util.clamp(y, SPECK_Y0, SPECK_Y1)),
+    x = REC_X - 4 - time * TAPE_W,
+    vx = speed,
+    gx = util.linlin(0, 1, 124, 4, time),               -- grid column
+    gy = util.linlin(-24, 24, 40, 14, semis),           -- grid row
     age = 0,
     life = 4 + math.floor(params:get("size") * 16),
     shape = params:get("shape"),
@@ -488,27 +552,114 @@ local function spawn_grains()
   end
 end
 
-local function draw_specks()
+-- age the grains; shape blends a sharp decay into a rise-and-fall swell,
+-- brightness follows the cloud's actual loudness
+local function update_specks()
   spawn_grains()
   local amp = crowio.amp
   local gain = amp and util.clamp(amp * 12, 0.15, 1) or 1
   for i = #specks, 1, -1 do
     local s = specks[i]
     local t = s.age / s.life
-    -- shape blends a sharp decay into a rise-and-fall swell
     local env = (1 - s.shape) * (1 - t) + s.shape * math.sin(math.pi * t)
     s.level = util.clamp(util.round(15 * env * gain), 0, 15)
-    if s.level > 0 then
-      screen.level(s.level)
-      screen.pixel(s.x, s.y)
-      screen.fill()
-    end
+    s.x = s.x + s.vx
     s.age = s.age + 1
-    if s.age > s.life then table.remove(specks, i) end
+    if s.age > s.life or s.x < TAPE_X0 or s.x > TAPE_X1 then table.remove(specks, i) end
   end
 end
 
--- mirror the specks onto the grid, brightness = life left
+local function draw_tape()
+  advance_tape()
+  -- recorded audio, newest on the right
+  for i, v in ipairs(tape) do
+    local x = TAPE_X0 + i - 1
+    local h = util.clamp(util.round(v * 14), 0, 6)
+    if h > 0 then
+      local age = 1 - i / #tape
+      screen.level(frozen and 2 or (1 + util.round(2 * (1 - age))))
+      screen.move(x + 0.5, VIEW_Y - h)
+      screen.line(x + 0.5, VIEW_Y + h + 1)
+      screen.stroke()
+    end
+  end
+  screen.level(3)
+  screen.move(TAPE_X0, VIEW_Y + 0.5)
+  screen.line(TAPE_X1 + 1, VIEW_Y + 0.5)
+  screen.stroke()
+
+  -- record head: solid while recording, an outline when frozen
+  if frozen then
+    screen.level(6)
+    screen.rect(REC_X - 1.5, VIEW_Y - 5.5, 3, 12)
+    screen.stroke()
+  else
+    screen.level(15)
+    screen.rect(REC_X - 1, VIEW_Y - 6, 3, 13)
+    screen.fill()
+    screen.level(8)
+    screen.move(TAPE_X1 + 1, VIEW_Y + 0.5)
+    screen.line(REC_X - 1, VIEW_Y + 0.5)
+    screen.stroke()
+  end
+
+  -- grains: a tick each, with a short trail showing which way it drifts
+  for _, s in ipairs(specks) do
+    if s.level > 0 then
+      local x = util.round(s.x)
+      screen.level(s.level)
+      screen.move(x + 0.5, VIEW_Y - 4)
+      screen.line(x + 0.5, VIEW_Y + 5)
+      screen.stroke()
+      if math.abs(s.vx) > 0.05 then
+        local dir = s.vx > 0 and 1 or -1
+        for t = 1, 4 do
+          local l = s.level - t * 3
+          if l > 0 then
+            screen.level(l)
+            screen.pixel(x - dir * t * 2, VIEW_Y - 4)
+            screen.pixel(x - dir * t * 2, VIEW_Y + 4)
+            screen.fill()
+          end
+        end
+      end
+    end
+  end
+end
+
+local function draw_scope()
+  screen.level(2)
+  for x = 2, 125, 3 do
+    screen.pixel(x, VIEW_Y)
+  end
+  screen.fill()
+  local pts = scope_pts
+  if not pts or #pts < 2 then return end
+  screen.level(15)
+  local step = 123 / (#pts - 1)
+  for i, v in ipairs(pts) do
+    local x = 2 + (i - 1) * step
+    local y = VIEW_Y - util.clamp(v, -1, 1) * 11
+    if i == 1 then screen.move(x, y) else screen.line(x, y) end
+  end
+  screen.stroke()
+end
+
+local function draw_view()
+  update_specks()
+  if is_synth() then draw_scope() else draw_tape() end
+end
+
+-- scope snapshots arrive from the engine over OSC
+on_osc = function(path, args, from)
+  if path == "/quartz/scope" then
+    scope_pts = args
+  elseif prev_osc_event then
+    prev_osc_event(path, args, from)
+  end
+end
+
+-- mirror the grains onto the grid: column is time, row is pitch, brightness = life left
 local function grid_note(x, y)
   return params:get("grid_lowest") + params:get("grid_dx") * x + params:get("grid_dy") * (8 - y)
 end
@@ -546,8 +697,8 @@ local function grid_redraw()
   local cols, rows = g.cols or 16, g.rows or 8
   local lit = {}
   for _, s in ipairs(specks) do
-    local c = util.round(util.linlin(4, 124, 1, cols, s.x))
-    local r = util.round(util.linlin(14, 40, 1, rows, s.y))
+    local c = util.round(util.linlin(4, 124, 1, cols, s.gx))
+    local r = util.round(util.clamp(util.linlin(14, 40, 1, rows, s.gy), 1, rows))
     local key = c .. ":" .. r
     lit[key] = math.max(lit[key] or 0, s.level)
   end
@@ -855,7 +1006,7 @@ function redraw()
   end
   screen.text_right(title .. " " .. page .. "/" .. #pages)
 
-  draw_specks()
+  draw_view()
   grid_redraw()
   arc_redraw()
 
@@ -889,6 +1040,7 @@ end
 
 function cleanup()
   if not needs_restart then params:write(last_state()) end
+  osc.event = prev_osc_event
   if midi_in then midi_in.event = nil end
   if g.device then
     g:all(0)
