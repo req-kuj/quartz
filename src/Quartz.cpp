@@ -12,6 +12,12 @@
 //   18 quality (0 dirty tape, 1 clean tape, 2 vintage digital, 3 digital)
 //   19 synth (1 = wavetable synth mode), 20 mono, 21 input gain
 // Outputs: L, R
+//
+// How it works: Beads processes audio in small fixed blocks at its own
+// sample rate (24, 32, or 48 kHz depending on the quality mode). This
+// wrapper collects SuperCollider's samples into those blocks, resampling
+// when the rates differ, runs Beads on each full block, and feeds the
+// results back out through a small FIFO, resampling again on the way out.
 
 #include "SC_PlugIn.h"
 
@@ -27,7 +33,8 @@ static InterfaceTable* ft;
 namespace {
 
 const int kInternalBlock = 12;   // largest Beads block (48k / 4000 Hz)
-const int kFifo = 64;
+const int kFifo = 64;            // output FIFO size, in internal samples
+// memory Beads expects, matching the module's RAM layout
 const size_t kBuffer1 = 512 * 1024;
 const size_t kBuffer2 = 256 * 1024;
 const size_t kReverbWords = 32768;
@@ -43,8 +50,7 @@ enum Inputs {
 };
 
 // 2nd order lowpass section; four of them make an 8th order Butterworth for
-// anti-aliasing when the
-// lo-fi modes run below 48 kHz.
+// anti-aliasing when the lo-fi modes run below 48 kHz.
 struct Biquad {
   float b0, b1, b2, a1, a2, z1, z2;
   void Init(float fc, float sr, float q) {
@@ -63,6 +69,7 @@ struct Biquad {
   }
 };
 
+// the 8th order filter, for left and right
 struct StereoLP {
   Biquad l[4], r[4];
   void Init(float fc, float sr) {
@@ -74,6 +81,7 @@ struct StereoLP {
   }
 };
 
+// Beads' two engines: the grain processor and the wavetable synth
 struct Engine {
   beads::Processor processor;
   beads::Synth synth;
@@ -81,12 +89,14 @@ struct Engine {
 
 }  // namespace
 
+// per-instance state
 struct Quartz : public Unit {
   Engine* engine;
   uint8_t* buffer1;
   uint8_t* buffer2;
   uint16_t* reverb_buffer;
 
+  // the current configuration; changing any of these reconfigures Beads
   int media;
   bool mono;
   bool synth_mode;
@@ -94,31 +104,35 @@ struct Quartz : public Unit {
   float host_sr;
   float ratio;        // internal sr / host sr
   int block;          // internal block size
-  float phase;
+  float phase;        // position between host samples, for resampling
 
+  // input side: the last two host samples, and the block being filled
   beads::FloatFrame prev_in, cur_in;
   beads::FloatFrame in_fifo[kInternalBlock];
   int in_count;
 
+  // output side: processed samples waiting to go out
   beads::FloatFrame out_fifo[kFifo];
   int out_read, out_write, out_avail;
   beads::FloatFrame out_prev, out_next;
 
   StereoLP in_lp, out_lp;
-  stmlib::GateFlags previous_trig;
-  bool trig_buffer[kInternalBlock];
+  stmlib::GateFlags previous_trig;    // seed trigger state across blocks
+  bool trig_buffer[kInternalBlock];   // trigger input for the block being filled
 };
 
 static void Quartz_next(Quartz* unit, int inNumSamples);
 static void Quartz_Ctor(Quartz* unit);
 static void Quartz_Dtor(Quartz* unit);
 
+// Beads' sample rate for each quality mode; the synth always runs at 48 kHz
 static float InternalRate(int media, bool synth) {
   if (synth) return 48000.0f;
   const float sr[4] = { 24000.0f, 48000.0f, 32000.0f, 48000.0f };
   return sr[media];
 }
 
+// set up Beads and the resamplers for a quality mode, mono, and synth choice
 static void Configure(Quartz* unit, int media, bool mono, bool synth) {
   unit->media = media;
   unit->mono = mono;
@@ -146,6 +160,7 @@ static void Configure(Quartz* unit, int media, bool mono, bool synth) {
   unit->out_next = 0.0f;
 }
 
+// constructor: allocate Beads' memory, initialize it, and configure
 static void Quartz_Ctor(Quartz* unit) {
   unit->engine = nullptr;
   unit->buffer1 = (uint8_t*)calloc(kBuffer1, 1);
@@ -161,6 +176,7 @@ static void Quartz_Ctor(Quartz* unit) {
   }
   unit->engine = new (mem) Engine();
 
+  // Beads splits its recording memory into three areas
   uint8_t* buffers[3];
   buffers[0] = unit->buffer1;
   buffers[1] = unit->buffer1 + (256 * 1024);
@@ -180,6 +196,7 @@ static void Quartz_Ctor(Quartz* unit) {
   Quartz_next(unit, 1);
 }
 
+// destructor: release everything the constructor allocated
 static void Quartz_Dtor(Quartz* unit) {
   if (unit->engine) {
     unit->engine->~Engine();
@@ -194,6 +211,7 @@ static inline float Clamp(float x, float lo, float hi) {
   return x < lo ? lo : (x > hi ? hi : x);
 }
 
+// run Beads on one full block, reading the current control values
 static void RunBlock(Quartz* unit) {
   beads::Parameters p;
   p.time.base = Clamp(IN0(IN_TIME), 0.0f, 1.0f);
@@ -204,6 +222,7 @@ static void RunBlock(Quartz* unit) {
   p.size.attenuverter = Clamp(IN0(IN_SIZE_RND), -1.0f, 1.0f);
   p.shape.attenuverter = Clamp(IN0(IN_SHAPE_RND), -1.0f, 1.0f);
   p.pitch.attenuverter = Clamp(IN0(IN_PITCH_RND), -1.0f, 1.0f);
+  // modulation comes in through the knob values themselves, so the CV inputs stay off
   p.time.cv = p.size.cv = p.shape.cv = p.pitch.cv = 0.0f;
   p.time.has_cv = p.size.has_cv = p.shape.has_cv = p.pitch.has_cv = false;
   p.monophonic_mode = false;
@@ -218,11 +237,13 @@ static void RunBlock(Quartz* unit) {
   m.reverb_amount = Clamp(IN0(IN_REVERB), 0.0f, 1.0f);
   m.output_gate = false;
 
+  // Beads' seed button: off, held, or locked on (the cloud)
   int seed = int(IN0(IN_SEED) + 0.5f);
   beads::SeedButtonState seed_state = seed >= 2
       ? beads::SEED_BUTTON_STATE_LOCKED
       : (seed == 1 ? beads::SEED_BUTTON_STATE_ON : beads::SEED_BUTTON_STATE_OFF);
 
+  // per-sample freeze and trigger flags, as the module's gate inputs provide them
   bool freeze[kInternalBlock];
   stmlib::GateFlags seed_flags[kInternalBlock];
   const bool frozen = IN0(IN_FREEZE) > 0.5f;
@@ -244,6 +265,7 @@ static void RunBlock(Quartz* unit) {
         seed_state, seed_input, freeze, d, p, m,
         unit->in_fifo, out, unit->block);
   }
+  // queue the results for Quartz_next to send out
   for (int i = 0; i < unit->block; ++i) {
     unit->out_fifo[unit->out_write] = out[i];
     unit->out_write = (unit->out_write + 1) % kFifo;
@@ -251,8 +273,11 @@ static void RunBlock(Quartz* unit) {
   unit->out_avail += unit->block;
 }
 
+// audio callback: feed input to Beads a block at a time, and play out its results
 static void Quartz_next(Quartz* unit, int inNumSamples) {
   if (!unit->engine) return;
+
+  // reconfigure if the quality, mono, or synth setting changed
 
   int media = int(IN0(IN_QUALITY));
   if (media < 0) media = 0;
@@ -270,6 +295,7 @@ static void Quartz_next(Quartz* unit, int inNumSamples) {
   float* out_l = OUT(0);
   float* out_r = OUT(1);
   const float gain = IN0(IN_GAIN);
+  // the tape modes saturate their input, as on the module
   const bool soft_clip = !synth && media <= 1;
   const bool resample = unit->ratio < 0.999f;
 
@@ -287,6 +313,7 @@ static void Quartz_next(Quartz* unit, int inNumSamples) {
     unit->cur_in.r = r;
     const bool trig_high = (trig_audio ? trig[n] : trig[0]) > 0.0f;
 
+    // every time enough host time passes for one internal sample, make one
     unit->phase += unit->ratio;
     if (unit->phase >= 1.0f) {
       unit->phase -= 1.0f;
@@ -309,6 +336,7 @@ static void Quartz_next(Quartz* unit, int inNumSamples) {
         --unit->out_avail;
       }
     }
+    // output: interpolate between the last two internal samples
     float t = 1.0f - unit->phase / unit->ratio;
     if (t < 0.0f) t = 0.0f;
     float ol = unit->out_next.l + (unit->out_prev.l - unit->out_next.l) * t;
@@ -324,6 +352,7 @@ static void Quartz_next(Quartz* unit, int inNumSamples) {
   }
 }
 
+// register the UGen with SuperCollider
 PluginLoad(Quartz) {
   ft = inTable;
   DefineDtorCantAliasUnit(Quartz);

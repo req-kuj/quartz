@@ -15,6 +15,16 @@
 -- arc 2, 3 = encoder 2, 3
 -- crow: set up in PARAMS
 
+-- how the files fit together:
+--   quartz.lua            this script: params, pages, controls, screen, grid, arc
+--   lib/crowio.lua        crow inputs and outputs, set up from PARAMS
+--   lib/Engine_Quartz.sc  the SuperCollider engine: input, pitch tracking,
+--                         sample playback, and data for the screen
+--   lib/Quartz.sc         the class file for the Quartz UGen
+--   bin/quartz-plugin     the compiled UGen (Beads DSP), copied into place
+--                         on first run
+--   src/                  source for the UGen and the vendored Beads code
+
 engine.name = "Quartz"
 
 local ControlSpec = require "controlspec"
@@ -24,11 +34,13 @@ local crowio = include("lib/crowio")
 local PLUGIN_DIR = _path.home .. "/.local/share/SuperCollider/Extensions/Quartz"
 local PLUGIN = PLUGIN_DIR .. "/Quartz.so"
 
+-- option lists, in the order the engine expects (quality is Beads' media mode)
 local QUALITY = {"dirty tape", "clean tape", "vintage digital", "digital"}
 local SOURCES = {"grains", "synth drone", "synth follow", "synth midi", "sample"}
 -- engine voice for each source (sample feeds the grains like live input)
 local ENGINE_SOURCE = {0, 1, 2, 3, 0}
 
+-- true for the three sources that play the wavetable synth
 local function is_synth()
   local src = params:get("source")
   return src >= 2 and src <= 4
@@ -77,6 +89,7 @@ local ONLY_FOR = {
   threshold = {3},
 }
 
+-- whether a param applies to the current source
 local function active(id)
   local only = ONLY_FOR[id]
   if not only then return true end
@@ -87,6 +100,7 @@ local function active(id)
   return false
 end
 
+-- show or hide source-specific params in the PARAMS menu
 local function update_visibility()
   for id in pairs(ONLY_FOR) do
     if active(id) then params:show(id) else params:hide(id) end
@@ -94,11 +108,12 @@ local function update_visibility()
   if _menu.rebuild_params then _menu.rebuild_params() end
 end
 
+-- ui state
 local k1_held = false
 local burst = false
 local toast, toast_clock
-local dice_acc, reset_acc = 0, 0
-local RESET_TURNS = 24
+local dice_acc, reset_acc = 0, 0   -- encoder travel on the patch page
+local RESET_TURNS = 24             -- clicks needed to reset, so it can't happen by accident
 local show_help = true   -- splash on launch
 local splash_count
 local help_clock
@@ -106,8 +121,8 @@ local cloud_on = true
 local frozen = false
 local needs_restart = false
 local midi_in
-local held_notes = {}
-local specks = {}
+local held_notes = {}     -- notes held on MIDI or the grid, newest last
+local specks = {}         -- grains drawn on the screen and grid
 -- view state, declared early so param actions can reach it
 local tape = {}            -- recorded level per column, oldest first
 local scope_pts            -- latest scope snapshot from the engine
@@ -115,11 +130,11 @@ local clear_tape
 local prev_osc_event, on_osc
 local g = grid.connect()
 local a = arc.connect()
-local arc_acc = {0, 0}
-local arc_page_acc = 0
+local arc_acc = {0, 0}    -- arc travel for stepped params on rings 2 and 3
+local arc_page_acc = 0    -- arc travel for page turns on ring 1
 
--- install the compiled UGen where scsynth can find it
--- install or update the compiled UGen; returns true when a restart is needed
+-- install or update the compiled UGen where SuperCollider can find it.
+-- returns true when it was copied, since scsynth only loads it on restart
 local function install_plugin()
   local src = norns.state.path .. "bin/quartz-plugin"
   if util.file_exists(PLUGIN) and os.execute("cmp -s '" .. src .. "' '" .. PLUGIN .. "'") then
@@ -133,11 +148,13 @@ end
 -- settings are remembered between sessions
 local function last_state() return norns.state.data .. "last.pset" end
 
+-- Beads' seed button state: locked while the cloud is on, pressed during a burst
 local function seed_state()
   if cloud_on then return 2 end
   return burst and 1 or 0
 end
 
+-- send the seed state, and push density up while a burst is held
 local function update_seed()
   engine.seed(seed_state())
   -- a burst sprays dense random grains whether the cloud is on or off,
@@ -155,6 +172,7 @@ local NOTE_NAMES = {"C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", 
 local INTERVALS = {"min 2nd", "maj 2nd", "min 3rd", "maj 3rd", "4th", "tritone",
   "5th", "min 6th", "maj 6th", "min 7th", "maj 7th"}
 
+-- format a pitch value for the screen, like "+5th" or "C3"
 function pitch_name(v)
   v = util.round(v)
   if params:get("source") == 2 then
@@ -176,6 +194,7 @@ end
 local PATCH = {"time", "time_rnd", "size", "size_rnd", "shape", "shape_rnd",
   "pitch", "pitch_rnd", "density", "drywet", "feedback", "cloud_reverb", "quality"}
 
+-- briefly show a message in place of the title, like "randomized"
 local function flash(msg)
   toast = msg
   if toast_clock then clock.cancel(toast_clock) end
@@ -186,6 +205,7 @@ local function flash(msg)
   end)
 end
 
+-- set every patch knob back to its default
 local function reset_patch()
   for _, id in ipairs(PATCH) do
     local p = params:lookup_param(id)
@@ -207,7 +227,7 @@ local function random_patch()
   -- attenurandomizers are left alone: small moves swing their knobs a lot
   params:set("drywet", r(0.4, 1))
   params:set("feedback", r(0, 0.6))
-  params:set("cloud_reverb", r(0, 0.8))
+  params:set("cloud_reverb", r(0, 0.5))
   params:set("quality", math.random(4))
   flash("randomized")
 end
@@ -230,6 +250,7 @@ function patch_enc(n, d)
   end
 end
 
+-- freeze or unfreeze, keeping the engine and crow's freeze gate in step
 function set_frozen(state)
   frozen = state
   engine.freeze(frozen and 1 or 0)
@@ -247,10 +268,13 @@ function open_sample_browser()
   end)
 end
 
+-- every setting lives in a param, so PARAMS, presets, crow, and the
+-- saved state all work the same way. actions send values to the engine.
 local function add_params()
   params:add_separator("quartz")
 
-  params:add_control("time", "time", ControlSpec.new(0, 1, "lin", 0, 0.5))
+  -- time defaults near the record head so grains play the audio you just made
+  params:add_control("time", "time", ControlSpec.new(0, 1, "lin", 0, 0.1))
   params:set_action("time", function(v) engine.time(v) end)
   params:add_control("size", "size", ControlSpec.new(0, 1, "lin", 0, 0.5))
   params:set_action("size", function(v) engine.size(v) end)
@@ -270,6 +294,7 @@ local function add_params()
 
   params:add_control("feedback", "feedback", ControlSpec.new(0, 1, "lin", 0, 0.2))
   params:set_action("feedback", function(v) engine.feedback(v) end)
+  -- named cloud_reverb because norns already has a system param called reverb
   params:add_control("cloud_reverb", "reverb", ControlSpec.new(0, 1, "lin", 0, 0.4))
   params:set_action("cloud_reverb", function(v) engine.reverb(v) end)
   params:add_control("drywet", "dry/wet", ControlSpec.new(0, 1, "lin", 0, 0.6))
@@ -291,6 +316,7 @@ local function add_params()
   })
 
   params:add_separator("input")
+  -- named input_mode because the separator above already uses the id "input"
   params:add_option("input_mode", "input", {"stereo", "mono (left)"}, 2)
   params:set_action("input_mode", function(v)
     engine.mono(v - 1)
@@ -349,6 +375,7 @@ local function play_top_note()
   end
 end
 
+-- listen to a MIDI device: notes play synth midi, the sustain pedal freezes
 function connect_midi(dev)
   if midi_in then midi_in.event = nil end
   midi_in = midi.connect(dev)
@@ -371,16 +398,18 @@ function connect_midi(dev)
   end
 end
 
+-- norns calls this once the engine has loaded
 function init()
   needs_restart = install_plugin()
   -- a new engine file only loads after a restart; until then, ask for one
   if not engine.scope then needs_restart = true end
   add_params()
   if util.file_exists(last_state()) then params:read(last_state(), true) end
-  params:bang()
+  params:bang()   -- send every value to the engine
   update_seed()
   engine.freeze(0)
   crowio.init()
+  -- the input level feeds the tape's waveform; scope frames arrive over OSC
   local in_poll = poll.set("in_amp", function(v) tape_input(v) end)
   if in_poll then
     in_poll.time = 0.02
@@ -389,6 +418,7 @@ function init()
   prev_osc_event = osc.event
   osc.event = on_osc
 
+  -- redraw the screen, grid, and arc 20 times a second
   local frame = metro.init()
   frame.time = 1 / 20
   frame.event = function()
@@ -408,6 +438,7 @@ function init()
   end)
 end
 
+-- encoders: 1 turns pages, 2 and 3 change the two knobs on the page
 function enc(n, d)
   if n == 1 then
     page = util.clamp(page + d, 1, #pages)
@@ -424,6 +455,8 @@ function enc(n, d)
   end
 end
 
+-- keys: 2 freezes, 3 toggles the cloud, and key 1 adds a second layer
+-- (hold for help, with 2 for a random patch, with 3 for a burst)
 function key(n, z)
   if n == 1 then
     k1_held = z == 1
@@ -463,12 +496,12 @@ function key(n, z)
 end
 
 -- main view. grains and sample show a tape: the record head sits on the
--- right, recorded audio scrolls left as it ages, and each grain is a tick
+-- left, recorded audio flows right as it ages, and each grain is a tick
 -- on the tape at its time position. pitch makes a grain drift: toward the
 -- record head when higher, away when lower. freeze stops the tape, and the
 -- heads keep reading through what's held.
 -- the synth sources show a live scope of the output instead.
-local TAPE_X0, TAPE_X1, REC_X, VIEW_Y = 4, 116, 120, 27
+local TAPE_X0, TAPE_X1, REC_X, VIEW_Y = 11, 123, 7, 27
 local TAPE_W = TAPE_X1 - TAPE_X0
 local FPS = 20
 
@@ -481,9 +514,10 @@ local function buffer_seconds()
 end
 
 local tape_peak = 0        -- loudest input since the last column
-local tape_clock = 0
-local clock_phase = 0
+local tape_clock = 0       -- time since the last column was added
+local clock_phase = 0      -- progress toward the next grain in clocked density
 
+-- empty the tape, as Beads does when its buffer is reconfigured
 clear_tape = function()
   for i = 1, TAPE_W + 1 do tape[i] = 0 end
   tape_peak, tape_clock = 0, 0
@@ -495,6 +529,8 @@ function tape_input(v)
   if v > tape_peak then tape_peak = v end
 end
 
+-- add a column for each slice of time that has passed, so the whole
+-- tape always spans the buffer's real length. frozen holds it still.
 local function advance_tape()
   if frozen then return end
   tape_clock = tape_clock + 1 / FPS
@@ -507,6 +543,8 @@ local function advance_tape()
   end
 end
 
+-- add one grain, placed and moving the way Beads would place it.
+-- these are drawn from the settings, not read from the engine.
 local function spawn_speck()
   local spread_t = math.abs(params:get("time_rnd"))
   local spread_p = math.abs(params:get("pitch_rnd"))
@@ -518,9 +556,9 @@ local function spawn_speck()
   -- once frozen the tape stops, so it moves at the full ratio
   local speed = (frozen and ratio or ratio - 1) * TAPE_W / buffer_seconds() / FPS
   table.insert(specks, {
-    x = REC_X - 4 - time * TAPE_W,
-    vx = speed,
-    gx = util.linlin(0, 1, 124, 4, time),               -- grid column
+    x = REC_X + 4 + time * TAPE_W,
+    vx = -speed,                                        -- toward the head is leftward
+    gx = util.linlin(0, 1, 4, 124, time),               -- grid column, head on the left too
     gy = util.linlin(-24, 24, 40, 14, semis),           -- grid row
     age = 0,
     life = 4 + math.floor(params:get("size") * 16),
@@ -529,6 +567,7 @@ local function spawn_speck()
   })
 end
 
+-- add grains at the rate density sets
 local function spawn_grains()
   if not (cloud_on or burst) then return end
   local d = params:get("density")
@@ -569,11 +608,12 @@ local function update_specks()
   end
 end
 
+-- draw the tape view: waveform, record head, and grains
 local function draw_tape()
   advance_tape()
-  -- recorded audio, newest on the right
+  -- recorded audio, newest on the left next to the head
   for i, v in ipairs(tape) do
-    local x = TAPE_X0 + i - 1
+    local x = TAPE_X1 - (i - 1)
     local h = util.clamp(util.round(v * 14), 0, 6)
     if h > 0 then
       local age = 1 - i / #tape
@@ -598,8 +638,8 @@ local function draw_tape()
     screen.rect(REC_X - 1, VIEW_Y - 6, 3, 13)
     screen.fill()
     screen.level(8)
-    screen.move(TAPE_X1 + 1, VIEW_Y + 0.5)
-    screen.line(REC_X - 1, VIEW_Y + 0.5)
+    screen.move(REC_X + 2, VIEW_Y + 0.5)
+    screen.line(TAPE_X0, VIEW_Y + 0.5)
     screen.stroke()
   end
 
@@ -627,6 +667,7 @@ local function draw_tape()
   end
 end
 
+-- draw the latest scope frame from the engine over a dotted center line
 local function draw_scope()
   screen.level(2)
   for x = 2, 125, 3 do
@@ -645,6 +686,7 @@ local function draw_scope()
   screen.stroke()
 end
 
+-- the middle of the screen: tape for grains and sample, scope for synths
 local function draw_view()
   update_specks()
   if is_synth() then draw_scope() else draw_tape() end
@@ -659,7 +701,7 @@ on_osc = function(path, args, from)
   end
 end
 
--- mirror the grains onto the grid: column is time, row is pitch, brightness = life left
+-- the note for a grid key in synth midi
 local function grid_note(x, y)
   return params:get("grid_lowest") + params:get("grid_dx") * x + params:get("grid_dy") * (8 - y)
 end
@@ -688,6 +730,8 @@ local function grid_keyboard()
   g:refresh()
 end
 
+-- the grid shows the keyboard in synth midi, otherwise the grains:
+-- column is time, row is pitch, brightness follows each grain's envelope
 local function grid_redraw()
   if not g.device then return end
   if params:get("source") == 4 then
@@ -710,7 +754,8 @@ local function grid_redraw()
   g:refresh()
 end
 
--- arc rings 1 and 2 show and edit the current page's params
+-- the param for knob n (1 or 2) on the current page, or nil if there isn't
+-- one to show on the arc
 local function page_param(n)
   if pages[page].actions then return nil end
   local id = n == 1 and pages[page].a or pages[page].b
@@ -777,6 +822,7 @@ local function arc_redraw()
   a:refresh()
 end
 
+-- arc turns: ring 1 pages, rings 2 and 3 edit the page's knobs
 a.delta = function(n, d)
   if n == 1 then
     -- ring 1 flips pages, like encoder 1
@@ -807,6 +853,7 @@ end
 -- in the synth sources some knobs take on Beads' synth-mode meanings
 local SYNTH_BITS = {"4-bit", "16/6-bit", "7-bit", "16-bit"}
 
+-- the name and value to show for a param, with synth relabels applied
 local function param_label(id)
   local name = params:lookup_param(id).name
   local value = params:string(id)
@@ -825,6 +872,7 @@ local function param_label(id)
   return name, value
 end
 
+-- draw one knob's label and value at the bottom of the screen
 local function draw_param(id, x)
   if id == "sample_file" then
     local f = params:get("sample_file")
@@ -888,6 +936,7 @@ local PANEL_KNOBS = {
 }
 local PANEL_JACKS_X = {6.0, 17.5, 28.9, 40.3, 51.8, 63.2}
 
+-- draw the mini panel with its left edge at x0
 function draw_panel(x0)
   local y0 = 3
   local function px(x) return x0 + x * PANEL_SCALE end
@@ -950,6 +999,7 @@ local HELP_LINES = {
   {"key 1 + 2", "random"},
 }
 
+-- the help screen, shown at launch and while key 1 is held
 local function draw_help()
   screen.level(15)
   screen.move(0, 7)
@@ -972,6 +1022,7 @@ local function draw_help()
   draw_panel(89)
 end
 
+-- draw the whole screen
 function redraw()
   if selecting then return end
   screen.clear()
@@ -1038,6 +1089,7 @@ g.key = function(x, y, z)
   play_top_note()
 end
 
+-- norns calls this when leaving the script: save settings, release devices
 function cleanup()
   if not needs_restart then params:write(last_state()) end
   osc.event = prev_osc_event

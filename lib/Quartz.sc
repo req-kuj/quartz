@@ -1,5 +1,9 @@
 // Quartz: granular texture UGen built on the open-source Beads DSP
 // by Emilie Gillet (MIT).
+//
+// The language-side class for the compiled UGen in bin/quartz-plugin.
+// Arguments are in the same order as the C++ inputs (see src/Quartz.cpp).
+// A mono input is used for both channels. Outputs left and right.
 
 Quartz : MultiOutUGen {
 	*ar { arg in, time=0.5, size=0.5, shape=0.5, pitch=0, density=0.75,

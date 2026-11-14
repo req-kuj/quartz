@@ -1,35 +1,47 @@
 -- crow i/o for quartz
 -- inputs: seed clock/gate, freeze gate, cv to a knob, v/oct to pitch
 -- outputs: followed pitch, cloud envelope, random cv, freeze gate
+--
+-- everything is chosen in PARAMS > crow. quartz.lua calls add_params()
+-- while building its params, then init() once the engine is running.
+-- nothing here runs unless crow is connected.
 
 local ControlSpec = require "controlspec"
 
 local M = {}
 
+-- choices shown in PARAMS
 local IN_MODES = {"off", "seed (clock/gate)", "freeze (gate)", "cv > knob", "v/oct > pitch"}
 local OUT_MODES = {"off", "follow pitch", "envelope", "random", "freeze gate"}
+-- knobs an input can modulate: param ids, and the names shown for them
 local TARGETS = {"time", "size", "shape", "density", "feedback", "drywet",
   "cloud_reverb", "time_rnd", "size_rnd", "shape_rnd", "pitch_rnd"}
 local TARGET_NAMES = {"time", "size", "shape", "density", "feedback", "dry/wet",
   "reverb", "time atten", "size atten", "shape atten", "pitch atten"}
+-- params whose engine command has a different name
 local CMD = {cloud_reverb = "reverb"}
 
-local ctx
-local last_target = {}
+local ctx               -- freeze getter and setter handed in by quartz.lua
+local last_target = {}  -- knob each input was modulating, to restore it later
 local random_clock
 
+-- the mode chosen for output o
 local function out_mode(o) return params:get("crow_out_" .. o) end
 
+-- send a knob's value plus a CV offset straight to the engine, leaving the
+-- param itself untouched so the screen still shows where you set it
 local function send_knob(id, offset)
   local p = params:lookup_param(id)
   local raw = util.clamp(params:get_raw(id) + offset, 0, 1)
   engine[CMD[id] or id](p.controlspec:map(raw))
 end
 
+-- resend a knob's own value once CV stops modulating it
 local function restore(id)
   if id then params:lookup_param(id):bang() end
 end
 
+-- configure crow input i for its chosen mode
 local function setup_input(i)
   local mode = params:get("crow_in_" .. i)
   local target = TARGETS[params:get("crow_in_" .. i .. "_target")]
@@ -38,6 +50,7 @@ local function setup_input(i)
 
   if mode == 2 then
     crow.input[i].mode("change", 1.0, 0.1, "both")
+    -- gate edges go to Beads' seed input, like its SEED jack
     crow.input[i].change = function(s) engine.trig(s and 1 or 0) end
   elseif mode == 3 then
     crow.input[i].mode("change", 1.0, 0.1, "both")
@@ -49,12 +62,14 @@ local function setup_input(i)
     crow.input[i].stream = function(v) send_knob(target, v / 5) end
   elseif mode == 5 then
     crow.input[i].mode("stream", 0.02)
+    -- 1V per octave, added to the pitch knob
     crow.input[i].stream = function(v) engine.pitch(params:get("pitch") + v * 12) end
   else
     crow.input[i].mode("none")
   end
 end
 
+-- apply every crow setting; runs on any crow param change and when crow connects
 function M.setup()
   if not (crow and crow.connected and crow.connected()) then return end
   local clocked = 0
@@ -62,6 +77,7 @@ function M.setup()
     setup_input(i)
     if params:get("crow_in_" .. i) == 2 then clocked = 1 end
   end
+  -- with a seed clock patched, Beads' grains follow the clock
   engine.clocked(clocked)
   for o = 1, 4 do
     crow.output[o].slew = out_mode(o) == 4 and 0.05 or 0
@@ -70,6 +86,7 @@ function M.setup()
   M.update_freeze()
 end
 
+-- update any output set to freeze gate; quartz.lua calls this on freeze
 function M.update_freeze()
   if not (crow and crow.connected and crow.connected()) then return end
   for o = 1, 4 do
@@ -77,6 +94,7 @@ function M.update_freeze()
   end
 end
 
+-- add the crow params; context gives access to quartz's freeze state
 function M.add_params(context)
   ctx = context
   params:add_separator("crow")
@@ -96,6 +114,7 @@ function M.add_params(context)
     ControlSpec.new(0.1, 20, "exp", 0, 2, "hz"))
 end
 
+-- start the polls and clock that drive the outputs
 function M.init()
   local function connected() return crow and crow.connected and crow.connected() end
 
@@ -119,6 +138,7 @@ function M.init()
   note_poll.time = 0.02
   note_poll:start()
 
+  -- stepped random voltage at the chosen rate
   random_clock = clock.run(function()
     while true do
       clock.sleep(1 / params:get("crow_random_rate"))
@@ -130,6 +150,7 @@ function M.init()
     end
   end)
 
+  -- reapply settings if crow is plugged in after quartz starts
   crow.add = function() M.setup() end
   M.setup()
 end

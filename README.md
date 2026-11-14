@@ -32,7 +32,7 @@ The help screen shows for a 3, 2, 1 countdown at launch, and whenever you hold k
 
 ![help while holding key 1](docs/images/help_hold_k1.png)
 
-The screen shows the tape, the way the Beads manual pictures it. The bar on the right is the record head, and your audio scrolls left as it ages. Each tick is a grain reading from the tape at its time position. Higher pitch drifts toward the record head, lower drifts away. Freeze stops the tape. The synth sources show a live scope of the output instead.
+The screen shows the tape, the way the Beads manual pictures it. The bar on the left is the record head, and your audio flows right as it ages. Each tick is a grain reading from the tape at its time position. Higher pitch drifts toward the record head, lower drifts away. Freeze stops the tape. The synth sources show a live scope of the output instead.
 
 ## Pages
 

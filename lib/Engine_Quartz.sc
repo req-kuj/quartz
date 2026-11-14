@@ -1,10 +1,22 @@
-// Engine_Quartz: norns engine around the Quartz granular UGen.
-// Source modes: 0 grains (live input), 1 synth drone, 2 track (input pitch
-// plays the synth voice), 3 midi (keyboard plays the synth voice).
+// Engine_Quartz: norns engine around the Quartz granular UGen (Beads DSP).
+//
+// One synth does everything: picks live input or a sample, tracks pitch,
+// runs Beads, and shapes played notes. quartz.lua sends it commands, one
+// per param, and reads back a few values for crow and the screen.
+//
+// Source modes (the "source" control):
+//   0 grains:       input or sample goes into Beads' grain engine
+//   1 synth drone:  Beads' wavetable synth at the pitch knob
+//   2 synth follow: input pitch plays the synth
+//   3 synth midi:   MIDI or the grid plays the synth
 
 Engine_Quartz : CroneEngine {
-	var synth, ampBus, noteBus, sampleBuf;
-	var inAmpBus, scopeBuf, phaseBus, scopeRoutine, matron;
+	var synth, sampleBuf;
+	// control buses read back by the polls below
+	var ampBus, noteBus, inAmpBus;
+	// scope: a rolling buffer of the output, its write position, and the
+	// routine that sends frames to the script
+	var scopeBuf, phaseBus, scopeRoutine, matron;
 	var scopeOn = false, scopeBusy = false, busyTicks = 0;
 
 	*new { arg context, doneCallback;
@@ -12,6 +24,7 @@ Engine_Quartz : CroneEngine {
 	}
 
 	alloc {
+		// argument defaults are placeholders: quartz.lua sends every value at startup
 		SynthDef(\quartz, {
 			arg in_l, in_r, out,
 			time=0.5, size=0.5, shape=0.5, pitch=0, density=0.75,
@@ -23,13 +36,15 @@ Engine_Quartz : CroneEngine {
 			amp_bus=0, note_bus=0, samp_buf=0, use_sample=0, samp_speed=1,
 			in_amp_bus=0, scope_buf=0, phase_bus=0;
 
+			// input: live audio, or the loaded sample looping
 			var live = [In.ar(in_l), In.ar(in_r)];
 			var samp = PlayBuf.ar(2, samp_buf, BufRateScale.kr(samp_buf) * samp_speed, loop: 1);
 			var input = Select.ar(use_sample, [live, samp]);
 			var monoIn = Mix(input) * 0.5;
 			var tracked, hasFreq, amp, trackNote, trackGate, semis, vca, sig, phase;
 
-			// Pitch tracking (mode 2).
+			// pitch tracking for synth follow. the gate keeps the last good
+			// note while you're not playing, and glide picks smooth or snapped
 			# tracked, hasFreq = Pitch.kr(monoIn, minFreq: 30, maxFreq: 1600,
 				ampThreshold: 0.01, median: 7);
 			amp = Amplitude.kr(monoIn, 0.01, 0.2);
@@ -38,6 +53,7 @@ Engine_Quartz : CroneEngine {
 			trackNote = Select.kr(glide, [trackNote.round, trackNote]);
 			trackNote = Lag.kr(trackNote, glide * 0.03);
 
+			// the pitch Beads plays, in semitones from C3, for each source
 			semis = Select.kr(source, [
 				pitch,
 				pitch,
@@ -45,6 +61,7 @@ Engine_Quartz : CroneEngine {
 				note - 48 + (octave * 12) + pitch
 			]);
 
+			// the Beads DSP. the synth flag switches it to the wavetable synth
 			sig = Quartz.ar(input * gain,
 				time, size, shape, semis, density,
 				time_rnd, size_rnd, shape_rnd, pitch_rnd,
@@ -72,13 +89,14 @@ Engine_Quartz : CroneEngine {
 			Out.kr(phase_bus, A2K.kr(phase));
 		}).add;
 
-		// placeholder until a sample file is loaded
+		// a tiny silent buffer stands in until a sample file is loaded
 		sampleBuf = Buffer.alloc(context.server, 64, 2);
 		ampBus = Bus.control(context.server);
 		noteBus = Bus.control(context.server);
 		inAmpBus = Bus.control(context.server);
 		phaseBus = Bus.control(context.server);
 		scopeBuf = Buffer.alloc(context.server, 2048, 1);
+		// matron is the norns Lua process; scripts receive OSC on port 10111
 		matron = NetAddr("127.0.0.1", 10111);
 		context.server.sync;
 
@@ -94,6 +112,7 @@ Engine_Quartz : CroneEngine {
 			\out, context.out_b.index
 		], context.xg);
 
+		// one command per synth control, each taking a single number
 		[
 			\time, \size, \shape, \pitch, \density,
 			\time_rnd, \size_rnd, \shape_rnd, \pitch_rnd,
@@ -131,7 +150,7 @@ Engine_Quartz : CroneEngine {
 				// if a reply ever goes missing, don't stall the scope
 				if (scopeBusy) { busyTicks = busyTicks + 1; if (busyTicks > 15) { scopeBusy = false } };
 				if (scopeOn and: { scopeBusy.not }) {
-					var wp = phaseBus.getSynchronous.asInteger;
+					var wp = phaseBus.getSynchronous.asInteger;   // where the buffer is writing now
 					scopeBusy = true;
 					busyTicks = 0;
 					scopeBuf.getn(0, 2048, { arg data;
@@ -141,6 +160,8 @@ Engine_Quartz : CroneEngine {
 						(600..1023).do({ arg i;
 							if ((start == 600) and: { a[i] <= 0 } and: { a[i + 1] > 0 }) { start = i };
 						});
+						// 113 points, one per column of the screen trace, with a
+						// little gain so normal levels fill the view
 						pts = Array.fill(113, { arg k;
 							(a[start + (k * 1024 / 113).floor] * 2.5).clip(-1, 1)
 						});
@@ -152,11 +173,14 @@ Engine_Quartz : CroneEngine {
 			}
 		}).play(SystemClock);
 
+		// values the script polls: cloud loudness (crow and grain brightness),
+		// input level (the tape's waveform), and the played note (crow)
 		this.addPoll("amp", { ampBus.getSynchronous });
 		this.addPoll("in_amp", { inAmpBus.getSynchronous });
 		this.addPoll("note", { noteBus.getSynchronous });
 	}
 
+	// norns calls this when the engine unloads
 	free {
 		scopeRoutine.stop;
 		scopeBuf.free;
